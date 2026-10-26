@@ -419,6 +419,85 @@ await prueba("modo mesa: agregar, editar, anotar y borrar refugios desde el inve
   await page.waitForFunction(() => F && F.nombre === "Test Vampiro", null, { timeout: 15000 });
 });
 
+await prueba("creación: la cabecera es del personaje nuevo y muestra los puntos por repartir", async () => {
+  await page.evaluate(() => { abrirCreacion(); });
+  assert.equal((await page.textContent("#pj-nombre")).trim(), "Nuevo personaje", "muestra el nombre del último personaje abierto");
+  assert.equal((await page.textContent("#n-blood")).trim(), "–");
+  assert.equal((await page.textContent("#n-fv")).trim(), "–");
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("#m-xp")).visibility), "hidden", "PX no tiene sentido en un personaje nuevo");
+  await page.fill("#w-nombre", "Lucía"); await page.fill("#w-apodo", "La Gata");
+  assert.equal((await page.textContent("#pj-nombre")).trim(), "Lucía «La Gata»");
+  await page.evaluate(() => { W.clan = "brujah"; W.step = 2; renderWz(); });
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Por repartir");
+  assert.equal((await page.textContent("#n-xp")).replace(/\s/g, ""), "15/15");
+  await page.click('[data-pick="atr:fuerza"] button[data-v="5"]');
+  assert.equal((await page.textContent("#n-xp")).replace(/\s/g, ""), "11/15");
+  await page.evaluate(() => { W.atr.fuerza = 5; W.atr.destreza = 5; W.atr.resistencia = 5; renderWz(); });
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Te pasaste");
+  assert.equal(await page.evaluate(() => document.querySelector("#n-xp").classList.contains("sobra")), true);
+  await foto("15-cabecera-creacion");
+  await page.evaluate(() => { W.step = 6; W.vir = { conciencia: 3, autocontrol: 3, coraje: 4 }; renderWz(); });
+  assert.equal((await page.textContent("#n-fv")).replace(/\s/g, ""), "4/4");
+  await page.evaluate(() => mostrarPestana("chat"));
+  assert.equal((await page.textContent("#pj-nombre")).trim(), "Test Vampiro", "no restauró la cabecera");
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "PX");
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("#m-salud")).display !== "none"), true);
+});
+await prueba("puntos gratuitos: círculos de otro color que se pueden sumar y sacar", async () => {
+  await page.evaluate(() => {
+    abrirCreacion();
+    Object.assign(W, {
+      nombre: "Círculos", concepto: "x", clan: "brujah",
+      atr: { fuerza: 4, destreza: 3, resistencia: 3, carisma: 3, manipulacion: 3, apariencia: 2, percepcion: 2, inteligencia: 2, astucia: 2 },
+      hab: { alerta: 3, atletismo: 3, pelea: 3, intimidacion: 2, callejeo: 2, armas_de_fuego: 3, conducir: 3, sigilo: 3, ocultismo: 3, investigacion: 2 },
+      dis: { celeridad: 1, potencia: 1, presencia: 1 }, tras: { recursos: 3, contactos: 2 }, vir: { conciencia: 4, autocontrol: 3, coraje: 3 },
+      grat: { "fuerza_voluntad:": 7, "humanidad:": 2, "habilidad:pelea": 1, "trasfondo:recursos": 1, "trasfondo:contactos": 1 }, step: 7 });
+    renderWz();
+  });
+  const c = (id, n) => `[data-dp="${id}"] button[data-v="${n}"]`;
+  const clase = async (id, n) => (await page.getAttribute(c(id, n), "class")) || "";
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Listo");
+  assert.equal((await page.textContent("#n-xp")).replace(/\s/g, ""), "0/15");
+  // Fuerza: 4 iniciales (color base), el 5º vacío
+  assert.equal(await clase("atributo:fuerza", 4), "on"); assert.equal(await clase("atributo:fuerza", 5), "");
+  // sin puntos iniciales libres en su grupo, un círculo vacío suma un gratuito (de otro color)
+  await page.click(c("atributo:fuerza", 5));
+  assert.equal(await page.evaluate(() => W.grat["atributo:fuerza"]), 1);
+  assert.equal(await clase("atributo:fuerza", 5), "fr");
+  assert.equal(await clase("atributo:fuerza", 4), "on", "los iniciales no deben cambiar de color");
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Te pasaste");
+  assert.equal((await page.textContent("#n-xp")).replace(/\s/g, ""), "−5/15");
+  await foto("16-circulos-gratuitos");
+  // tocar el círculo gratuito lo saca
+  await page.click(c("atributo:fuerza", 5));
+  assert.equal(await page.evaluate(() => W.grat["atributo:fuerza"]), undefined);
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Listo");
+  await page.evaluate(() => document.querySelectorAll("#s-crear details").forEach(d => d.open = true));
+  // se puede sumar varios de una vez y el costo se refleja (Habilidad = 2 c/u): Alerta 3 → 5
+  await page.click(c("habilidad:alerta", 5));
+  assert.equal(await page.evaluate(() => W.grat["habilidad:alerta"]), 2);
+  assert.equal(await clase("habilidad:alerta", 4), "fr"); assert.equal(await clase("habilidad:alerta", 5), "fr");
+  assert.equal((await page.textContent("#n-xp")).replace(/\s/g, ""), "−4/15");
+  // tocar el 4º gratuito lo deja en 4 (saca uno)
+  await page.click(c("habilidad:alerta", 4));
+  assert.equal(await page.evaluate(() => W.grat["habilidad:alerta"]), 1);
+  await page.click(c("habilidad:alerta", 4));
+  assert.equal(await page.evaluate(() => W.grat["habilidad:alerta"]), undefined);
+  // mover un punto inicial dentro de su grupo: sacar uno de Fuerza y ponerlo en Destreza (queda inicial, no gratuito)
+  await page.click(c("atributo:fuerza", 4));
+  assert.equal(await page.evaluate(() => W.atr.fuerza), 3);
+  await page.click(c("atributo:destreza", 4));
+  assert.equal(await page.evaluate(() => W.atr.destreza), 4);
+  assert.equal(await page.evaluate(() => W.grat["atributo:destreza"]), undefined, "debió usar el punto inicial libre, no uno gratuito");
+  assert.equal(await clase("atributo:destreza", 4), "on");
+  assert.equal((await page.textContent("#m-xp .stat-l")).trim(), "Listo");
+  // Humanidad y Fuerza de Voluntad: los círculos de las Virtudes no se tocan, los gratuitos sí
+  assert.equal(await page.evaluate(() => document.querySelector('[data-dp="humanidad:"] button[data-v="1"]').disabled), true);
+  await page.click(c("humanidad:", 10));
+  assert.equal(await page.evaluate(() => W.grat["humanidad:"]), 3);
+  await page.evaluate(() => mostrarPestana("chat"));
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

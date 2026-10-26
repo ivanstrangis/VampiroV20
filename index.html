@@ -24,7 +24,7 @@
 :root{
   --bg:#09090a; --panel:#131315; --panel-2:#1c1c20; --line:#2d2d33;
   --fg:#e8e8ec; --muted:#9b9ba6; --blood:#c1121f; --blood-soft:#360a0e;
-  --gold:#c9ccd3; --gold-soft:#24252a; --plata:#d9dbe1; --borde:#6b6b75; --ok:#9fc3a8; --bad:#ff6b77; --ink:#09090a;
+  --gold:#c9ccd3; --gold-soft:#24252a; --plata:#d9dbe1; --borde:#6b6b75; --ok:#9fc3a8; --bad:#ff6b77; --ink:#09090a; --extra:#e3a33b;
   --gothic:"UnifrakturMaguntia","Old English Text MT",Georgia,serif;
   --display:"Cinzel","Trajan Pro",Georgia,serif;
   --body:"EB Garamond",Garamond,Georgia,serif;
@@ -217,6 +217,13 @@ textarea.notes{width:100%;min-height:120px;background:var(--panel);border:1px so
 .dotpick button{width:22px;height:22px;border-radius:50%;border:1px solid var(--gold);background:transparent;padding:0}
 .dotpick button.on{background:var(--gold)}
 .dotpick button:disabled{cursor:default;opacity:1}
+.dots{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px}
+.dots button{width:26px;height:26px;border-radius:50%;border:1px solid var(--borde);background:transparent;padding:0}
+.dots button.on{background:var(--gold);border-color:var(--gold)}
+.dots button.fr{background:var(--extra);border-color:var(--extra)}
+.dots button:disabled{cursor:default;opacity:1}
+.arow2 .tot small.gr{color:var(--extra);font-size:16px;font-weight:600}
+.stat-v.sobra{color:var(--bad)}.stat-v.listo{color:var(--ok)}
 .err{color:var(--bad);font-size:16.5px;min-height:1.3em;margin:4px 0 0}
 .wz-nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px}
 .later{list-style:none;padding:0;margin:0}
@@ -283,6 +290,7 @@ details.cat[open] summary{margin-bottom:6px}
 .sub-h{display:flex;justify-content:space-between;align-items:center;margin:10px 0 2px;color:var(--muted);font-size:16px}
 .leyenda{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:16px;margin:4px 0 10px}
 .leyenda i{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--gold);vertical-align:-2px;margin-right:6px}
+.leyenda i.fr{background:var(--extra)}
 .leyenda em{font-style:normal;font-family:var(--mono);color:var(--gold);margin-right:6px}
 .myd-det{margin:0 0 8px}
 .myd-det label{display:block;color:var(--muted);font-size:16px;margin-bottom:2px}
@@ -504,7 +512,7 @@ select.mini,.field input,.field select,.field textarea,.mydsel,.cat-h select,.re
 .vacio .btn{width:100%}
 .seg button[disabled]{opacity:.45}
 :root[data-theme="light"]{--bg:#f3f1ee;--panel:#ffffff;--panel-2:#f1eeea;--line:#e7e2dc;--fg:#1c1b1f;--muted:#625e68;--blood:#a8101c;--blood-soft:#fbebec;
-  --gold:#3d3f47;--gold-soft:#ebe7e1;--plata:#1c1b1f;--borde:#cfc8bf;--ok:#2e6b41;--bad:#b3261e;--ink:#ffffff;--sangre-txt:#8c0d18;
+  --gold:#3d3f47;--gold-soft:#ebe7e1;--plata:#1c1b1f;--borde:#cfc8bf;--ok:#2e6b41;--bad:#b3261e;--ink:#ffffff;--extra:#b86e00;--sangre-txt:#8c0d18;
   --sombra:0 1px 2px rgba(28,27,31,.06),0 6px 20px rgba(28,27,31,.05);--seg-bg:#e9e5df;--seg-on:#ffffff;color-scheme:light}
 :root[data-theme="light"] .sheet .seg{background:#e9e5df}
 :root[data-theme="light"] .tabs{box-shadow:0 6px 24px rgba(28,27,31,.10)}
@@ -1313,6 +1321,7 @@ function setBusy(b){
    Interfaz
    ===================================================================== */
 function refrescarCabecera(){
+  if(cabCreacion){ if(!$("#s-crear").hidden) return; return restaurarCabecera(); }   // creando: la cabecera es del personaje nuevo
   if(!F) return;
   $("#pj-nombre").textContent = F.nombre;
   const [, reserva] = limites();
@@ -1480,6 +1489,7 @@ function mostrarPestana(t){
   const p = (t === "chat" && modoMesa()) ? "juego" : t;
   ["chat","juego","ficha","inv","notas","crear"].forEach(k => $("#s-"+k).hidden = (k !== p));
   $("#composer").hidden = (p !== "chat");
+  if(cabCreacion && p !== "crear") restaurarCabecera();
   if(!F) return;
   if(p === "juego") renderJuego(); if(p === "ficha") renderFicha(); if(p === "inv") renderInv(); if(p === "notas") renderNotas(); if(p === "crear") renderWz();
   if(p === "chat") scrollChat();
@@ -1906,12 +1916,39 @@ function setPick(id, v){
 }
 const presupuesto = (gasto, total) => `<span class="budget ${gasto===total?"ok":gasto>total?"over":""}">${gasto}/${total}</span>`;
 const PICK_TIPO = {atr:"atributo", hab:"habilidad", dis:"disciplina", tras:"trasfondo", vir:"virtud"};
-function fbRow2(tipo, k, etiqueta, base){
-  const g = W.grat[tipo+":"+(k||"")] || 0, v = totalRasgo(tipo,k), max = maxRasgo(tipo,k);
-  return `<div class="arow2">${infoBtn(tipo==="humanidad"?"humanidad":tipo==="fuerza_voluntad"?"fuerza_de_voluntad":k, v, etiqueta)}<span class="tot" aria-label="Total ${v}">${v}</span>
-    <span>${base}</span>
-    <span class="fb"><button type="button" data-fb="${tipo}:${k||""}" data-d="-1" aria-label="Quitar un punto gratuito de ${etiqueta}" ${g?"":"disabled"}>−</button><small>+${g}</small>
-    <button type="button" data-fb="${tipo}:${k||""}" data-d="1" aria-label="Sumar un punto gratuito a ${etiqueta}" ${v>=max?"disabled":""}>+</button></span></div>`;
+// Puntos iniciales (color base) y gratuitos (color propio) en una sola fila de círculos; el 4º parámetro ya no se usa.
+const PREF_PICK = {atributo:"atr", habilidad:"hab", disciplina:"dis", trasfondo:"tras", virtud:"vir"};
+function fbRow2(tipo, k, etiqueta){
+  const g = W.grat[tipo+":"+(k||"")] || 0, v = totalRasgo(tipo,k), max = maxRasgo(tipo,k), baseV = v - g;
+  const derivado = tipo === "humanidad" || tipo === "fuerza_voluntad";   // su base sale de las Virtudes: no se toca acá
+  const circulos = max ? Array.from({length:max}, (_,i) => { const n = i + 1, inicial = n <= baseV, gratis = !inicial && n <= v;
+    return `<button type="button" data-v="${n}" class="${inicial ? "on" : gratis ? "fr" : ""}" ${derivado && inicial ? "disabled" : ""} aria-label="${inicial ? "Punto inicial" : gratis ? "Punto gratuito" : "Vacío"} ${n} de ${etiqueta}"></button>`; }).join("") : '<span class="pen">0</span>';
+  return `<div class="arow2">${infoBtn(derivado ? (tipo==="humanidad"?"humanidad":"fuerza_de_voluntad") : k, v, etiqueta)}<span class="tot" aria-label="Total ${v}">${v}${g ? ` <small class="gr">+${g}</small>` : ""}</span>
+    <div class="dots" data-dp="${tipo}:${k||""}">${circulos}</div></div>`;
+}
+// ¿Quedan puntos iniciales sin gastar en el grupo de este rasgo? (así un círculo vacío se llena con uno inicial, no con un gratuito)
+function puedeSumarInicial(tipo, k){
+  const base = (W[PREF_PICK[tipo]] || {})[k] || 0;
+  if(tipo === "atributo"){ const g = Object.keys(ATR).find(x => ATR[x].includes(k)); return base < 5 && gastoAtr(g) < W.prioA[g]; }
+  if(tipo === "habilidad"){ const g = Object.keys(HAB).find(x => HAB[x].includes(k)); return base < 3 && gastoHab(g) < W.prioH[g]; }
+  if(tipo === "disciplina") return disClan().includes(k) && base < 3 && sumaVals(W.dis, disClan()) < 3;
+  if(tipo === "trasfondo") return base < 5 && sumaVals(W.tras, TRASFONDOS) < 5;
+  if(tipo === "virtud") return base < 5 && extraVir() < 7;
+  return false;
+}
+// Toque en el círculo n de un rasgo: círculo inicial = sacar un punto inicial (como en los pasos anteriores); círculo gratuito = sacar gratuitos; vacío = sumar.
+function tocarCirculo(tipo, k, n){
+  const gk = tipo+":"+(k||""), g = W.grat[gk] || 0, v = totalRasgo(tipo,k), baseV = v - g;
+  const setG = x => { if(x > 0) W.grat[gk] = x; else delete W.grat[gk]; };
+  if(n <= baseV){ if(tipo === "humanidad" || tipo === "fuerza_voluntad") return; setPick(PREF_PICK[tipo]+":"+k, n); }
+  else if(n <= v) setG(n === v ? g - 1 : n - baseV);
+  else {
+    let faltan = Math.min(n, maxRasgo(tipo,k)) - v, gr = g;
+    while(faltan-- > 0){ if(puedeSumarInicial(tipo, k)) W[PREF_PICK[tipo]][k] = ((W[PREF_PICK[tipo]][k]) || 0) + 1; else gr++; }
+    setG(gr);
+  }
+  const sobra = totalRasgo(tipo,k) - maxRasgo(tipo,k);
+  if(sobra > 0) setG(Math.max(0, (W.grat[gk]||0) - sobra));
 }
 function fbRow(tipo, k, etiqueta){
   const g = W.grat[tipo+":"+(k||"")] || 0, v = totalRasgo(tipo,k), max = maxRasgo(tipo,k);
@@ -1920,7 +1957,46 @@ function fbRow(tipo, k, etiqueta){
     <button type="button" data-fb="${tipo}:${k||""}" data-d="1" aria-label="Sumar un punto a ${etiqueta}" ${v>=max?"disabled":""}>+</button></span></div>`;
 }
 
+/* ---------- cabecera durante la creación: muestra al personaje NUEVO, no al último abierto ---------- */
+let cabCreacion = false;
+// Puntos que faltan por repartir en el paso actual (negativo = te pasaste) y el total del paso.
+function porRepartir(s){
+  // Con varios grupos (Atributos, Habilidades) un grupo pasado no se compensa con las sobras de otro: se avisa que te pasaste.
+  const grupos = (o, prio, gasto) => { const r = Object.keys(o).map(g => prio[g] - gasto(g)), total = Object.keys(o).reduce((a, g) => a + prio[g], 0);
+    const pasado = r.filter(x => x < 0).reduce((a, x) => a + x, 0); return {resta: pasado || r.reduce((a, x) => a + x, 0), total}; };
+  if(s === 2) return grupos(ATR, W.prioA, gastoAtr);
+  if(s === 3) return grupos(HAB, W.prioH, gastoHab);
+  if(s === 4) return {resta: 3 - sumaVals(W.dis, disClan()), total: 3};
+  if(s === 5) return {resta: 5 - sumaVals(W.tras, TRASFONDOS), total: 5};
+  if(s === 6) return {resta: 7 - extraVir(), total: 7};
+  if(s === 7) return {resta: dispGrat() - gastoGrat(), total: dispGrat()};
+  return null;
+}
+function cabeceraCreacion(){
+  cabCreacion = true;
+  const s = W.step, [, reserva] = GEN[generacionW()], fv = s >= 6 ? totalRasgo("fuerza_voluntad") : 0;
+  $("#pj-nombre").textContent = nombreCompuesto() || "Nuevo personaje";
+  $("#n-blood").innerHTML = W.sangre ? `${W.sangre}<small>/${reserva}</small>` : "–";
+  $("#bar-blood").style.width = W.sangre ? (100 * W.sangre / reserva) + "%" : "0%";
+  $("#n-fv").innerHTML = fv ? `${fv}<small>/${fv}</small>` : "–";
+  $("#bar-fv").style.width = fv ? "100%" : "0%";
+  const pr = porRepartir(s), xp = $("#m-xp"), v = $("#n-xp");
+  xp.style.visibility = pr ? "" : "hidden"; xp.disabled = true;
+  $("#m-xp .stat-l").textContent = !pr ? "PX" : pr.resta < 0 ? "Te pasaste" : pr.resta === 0 ? "Listo" : "Por repartir";
+  v.innerHTML = pr ? `${pr.resta < 0 ? "−" : ""}${Math.abs(pr.resta)}<small>/${pr.total}</small>` : "–";
+  v.classList.toggle("sobra", !!pr && pr.resta < 0); v.classList.toggle("listo", !!pr && pr.resta === 0);
+  $("#m-salud").style.display = "none"; $("#escena").textContent = "";
+}
+// Vuelve la cabecera a lo normal (PX, salud) cuando se sale de la creación.
+function restaurarCabecera(){
+  cabCreacion = false;
+  const xp = $("#m-xp"), v = $("#n-xp");
+  xp.style.visibility = ""; xp.disabled = false; $("#m-xp .stat-l").textContent = "PX";
+  v.classList.remove("sobra", "listo"); $("#m-salud").style.display = "";
+  if(F) refrescarCabecera(); else { $("#pj-nombre").textContent = "VampiroV20"; ["n-blood","n-fv","n-xp"].forEach(i => $("#"+i).textContent = "–"); $("#bar-blood").style.width = $("#bar-fv").style.width = "0%"; }
+}
 function renderWz(){
+  cabeceraCreacion();
   const wz = $("#s-crear"), s = W.step, opt = (l,sel) => l.map(a => `<option ${a===sel?"selected":""}>${a}</option>`).join("");
   const bar = '<div class="steps">'+PASOS.map((_,i)=>`<i class="${i<=s?"on":""}"></i>`).join("")+"</div>";
   const err = validarPaso(s);
@@ -1977,7 +2053,7 @@ function renderWz(){
     const det = t => (totalRasgo("trasfondo",t) && t !== "generacion") ? `<input class="tras-det" data-wtd="${t}" value="${esc(W.trasDet[t]||"")}" placeholder="${PISTA_TRAS[t]||"Detalle"}" aria-label="Detalle de ${lab(t)}">` : "";
     html = head("Puntos gratuitos", `15 puntos, más hasta 7 por Defectos. Costo por punto: ${tablaCostos}. Los Méritos cuestan lo que indica cada uno.`) +
       `<div class="money"><span class="mlbl">Gratuitos gastados</span><span class="num">${gastoGrat()} / ${dispGrat()}</span></div>` +
-      `<div class="leyenda"><span><i></i>Puntos iniciales: se mueven solo dentro de su grupo</span><span><em>− +</em>Gratuitos: van a cualquier Rasgo</span></div>` +
+      `<div class="leyenda"><span><i></i>Iniciales: tocá uno lleno para sacarlo y uno vacío de su grupo para ponerlo</span><span><i class="fr"></i>Gratuitos: tocá un círculo vacío para sumar y uno de este color para sacar</span></div>` +
       `<details class="cat" open><summary>Atributos</summary>${Object.entries(ATR).map(([g,l]) => sub(lab(g), gastoAtr(g), W.prioA[g]) + l.map(a => fbRow2("atributo",a,lab(a),atrBase(a))).join("")).join("")}</details>` +
       Object.entries(HAB).map(([g,l]) => `<details class="cat"><summary>Habilidades · ${lab(g)} ${presupuesto(gastoHab(g), W.prioH[g])}</summary>${l.map(x => fbRow2("habilidad",x,lab(x),pick("hab:"+x, W.hab[x]||0, 0, 3))).join("")}</details>`).join("") +
       `<details class="cat"><summary>Disciplinas ${presupuesto(sumaVals(W.dis, disClan()), 3)}</summary>${disClan().map(d => fbRow2("disciplina",d,lab(d),pick("dis:"+d, W.dis[d]||0, 0, 3))).join("")}</details>` +
@@ -2024,6 +2100,7 @@ function enlazarWz(wz){
     const d = wz.querySelectorAll("details"); if(d.length === a.length) d.forEach((x,i) => x.open = a[i]); wz.scrollTop = y; };
   const txt = (id, k) => { const el = $("#"+id); if(el) el.oninput = e => { W[k] = e.target.value; const e2 = validarPaso(W.step); const n = $("#wz-next"); if(n) n.disabled = !!e2; const er = wz.querySelector(".err"); if(er) er.textContent = e2; }; };
   txt("w-nombre","nombre"); txt("w-apodo","apodo");
+  ["w-nombre","w-apodo"].forEach(id => { const el = $("#"+id); if(el) el.addEventListener("input", cabeceraCreacion); });
   ["w-nombre","w-apodo"].forEach(id => { const el = $("#"+id); if(el) el.addEventListener("input", () => { const v = $("#w-nombre-ver"); if(v) v.innerHTML = nombreCompuesto() ? "Se va a ver así: <b style=\"color:var(--fg)\">"+esc(nombreCompuesto())+"</b>" : ""; }); }); txt("w-concepto","concepto"); txt("w-detalle","detalle"); txt("w-desc","desc"); txt("w-refugio","refugio"); txt("w-equipo","equipo");
   ["naturaleza","conducta"].forEach(k => { const el = $("#w-"+k); if(el) el.onchange = e => W[k] = e.target.value; });
   const din = $("#w-dinero"); if(din) din.oninput = e => { W.dinero = Math.max(0, Math.round(Number(e.target.value)||0));
@@ -2039,10 +2116,9 @@ function enlazarWz(wz){
     const [t, k] = id.split(":"), tipo = PICK_TIPO[t], gk = tipo+":"+k;
     if(W.grat[gk]){ const sobra = totalRasgo(tipo, k) - maxRasgo(tipo, k); if(sobra > 0){ W.grat[gk] = Math.max(0, W.grat[gk] - sobra); if(!W.grat[gk]) delete W.grat[gk]; } }
     re(); });
-  wz.querySelectorAll("[data-fb]").forEach(b => b.onclick = () => {
-    const k = b.dataset.fb, d = +b.dataset.d, [t,r] = k.split(":");
-    if(d > 0 && totalRasgo(t,r) >= maxRasgo(t,r)) return;
-    W.grat[k] = Math.max(0, (W.grat[k]||0) + d); if(!W.grat[k]) delete W.grat[k];
+  wz.querySelectorAll("[data-dp] button").forEach(b => b.onclick = () => {
+    const [t, r] = b.parentElement.dataset.dp.split(":");
+    tocarCirculo(t, r, +b.dataset.v);
     const abiertos = [...wz.querySelectorAll("details")].map(x => x.open);
     re(); wz.querySelectorAll("details").forEach((x,i) => x.open = abiertos[i]);
   });
@@ -3832,6 +3908,7 @@ function bienvenida(){
 }
 function abrirCreacion(){ W = nuevoW(); $("#tabs").hidden = !F; mostrarPestana("crear"); if(!F) renderWz(); }
 function pantallaVacia(titulo, texto, boton){
+  if(cabCreacion) restaurarCabecera();
   $("#pj-nombre").textContent = "VampiroV20";
   ["n-blood","n-fv","n-xp","n-salud"].forEach(i => $("#"+i).textContent = "–"); $("#hb-salud").innerHTML = ""; $("#escena").textContent = "";
   ["chat","juego","ficha","inv","notas","crear"].forEach(k => $("#s-"+k).hidden = k !== "juego");
