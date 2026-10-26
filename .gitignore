@@ -1,0 +1,14 @@
+# Dependencias y resultados de las pruebas
+node_modules/
+tests/screenshots/
+tests/.tmp/
+
+# Versión para el artefacto de Claude (se genera con tools/build-artifact.py)
+dist/
+
+# Copias de trabajo y archivos del sistema
+bbn-jugadores.html
+*.bak
+.DS_Store
+Thumbs.db
+.env

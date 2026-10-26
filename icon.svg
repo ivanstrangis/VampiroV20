@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VampiroV20">
+  <rect width="512" height="512" fill="#0e0e10"/>
+  <path d="M256 70C256 70 128 214 128 322a128 128 0 0 0 256 0C384 214 256 70 256 70Z" fill="#c1121f"/>
+  <path d="M206 300c0-34 14-62 32-88" fill="none" stroke="#e8505b" stroke-width="16" stroke-linecap="round" opacity=".75"/>
+</svg>
