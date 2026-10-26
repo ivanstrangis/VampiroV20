@@ -1059,7 +1059,10 @@ const INSTRUCCIONES = `Sos el Narrador de una crónica de Vampiro: La Mascarada 
 
 CÓMO NARRAR
 - Respuestas cortas: 1 a 3 párrafos breves. Atmósfera concreta de Buenos Aires de noche (lugares reales, olores, sonidos). Los PNJ hablan con su propia voz; el diálogo va entre «comillas latinas».
-- Nunca decidas lo que piensa, siente o hace el personaje del jugador más allá de lo que dijo. Dejá la escena abierta para que el jugador actúe.
+- FIDELIDAD A LA ACCIÓN (la regla más importante): narrá únicamente lo que el jugador dijo que hace, a la misma escala. Si dice que sale a la calle, está en la puerta o la vereda; no camina por el barrio ni va a ningún lado. No avances el tiempo ni lo mudes de lugar más de lo que dijo. No le inventes pensamientos, emociones, sensaciones ni decisiones (nada de «sentís frío», «la sed te empuja», «decidís…»).
+- Si lo que dijo admite dos lecturas, tomá la más chica y quieta. Si la diferencia importa de verdad, preguntale en una línea qué quiso decir en vez de elegir por él.
+- Describí lo que pasa alrededor y cómo reaccionan los PNJ, y parate en el primer momento en que al jugador le toque decidir. Que el mundo se mueva (alguien se acerca, algo suena) sí; que el personaje actúe por su cuenta, no.
+- Las opciones de sugerir_opciones son atajos, no un guion: nunca las des por elegidas ni empujes la escena hacia ellas.
 - Al terminar cada respuesta llamá a sugerir_opciones con 2 a 4 acciones posibles cortas (el jugador puede escribir cualquier otra cosa).
 - Cuando cambien el lugar o la hora, llamá a actualizar_escena.
 
@@ -1139,6 +1142,8 @@ function turnos(){
     else if(m.rol === "dados") push("user", `[Tirada del Narrador «${m.datos.titulo}»: ${textoTirada(m.datos)}]`);
   }
   if(out[out.length-1].role !== "user") out.push({role:"user", content:"[Continuá la escena.]"});
+  // Recordatorio pegado al final del pedido: lo último que se lee es lo que más pesa.
+  out[out.length-1].content += "\n\n[Recordatorio del Director: narrá solo lo que el jugador acaba de decir que hace, a su misma escala; no lo muevas de lugar, no avances el tiempo ni le inventes pensamientos o sensaciones. Parate en la primera decisión que le toque tomar.]";
   return out;
 }
 
