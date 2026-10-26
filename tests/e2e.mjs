@@ -269,6 +269,29 @@ await prueba("el Narrador usa una herramienta y sigue narrando (protocolo OpenAI
   await foto("08-narrador");
 });
 
+await prueba("límite por minuto de Groq: espera lo que pide el servicio y reintenta solo; el diario avisa sin reintentar", async () => {
+  let llamadas = 0, modo = "minuto";
+  await ctx.unroute("https://api.groq.com/**");
+  await ctx.route("https://api.groq.com/**", async route => {
+    const req = route.request();
+    const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-expose-headers": "retry-after" };
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    llamadas++;
+    if (modo === "diario") return route.fulfill({ status: 429, headers: cors, contentType: "application/json", body: '{"error":{"message":"Rate limit reached for model on tokens per day (TPD): Limit 200000. Please try again in 3h2m1s.","code":"rate_limit_exceeded"}}' });
+    if (llamadas === 1) return route.fulfill({ status: 429, headers: { ...cors, "retry-after": "1" }, contentType: "application/json", body: '{"error":{"message":"Rate limit reached on tokens per minute (TPM): Limit 8000. Please try again in 1s.","code":"rate_limit_exceeded"}}' });
+    await route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body: 'data: {"choices":[{"delta":{"content":"Pasó el minuto y seguís."}}]}\n\ndata: [DONE]\n\n' });
+  });
+  await page.evaluate(() => { MUNDO.modo = "ia"; MUNDO.cronica_id = PJ; GUIA = { premisa: "p", pnj: [] }; CRON = { nombre: "Prueba", tipo: "libre" }; aplicarModo(); mostrarPestana("chat"); });
+  await page.evaluate(() => narrar("Sigo adelante"));
+  await page.waitForFunction(() => document.querySelector("#chat").textContent.includes("Pasó el minuto y seguís."), null, { timeout: 15000 });
+  assert.equal(llamadas, 2, "debía reintentar una vez");
+  modo = "diario"; llamadas = 0;
+  await page.evaluate(() => narrar("Otra vez"));
+  await page.waitForFunction(() => document.querySelector("#chat").textContent.includes("límite diario"), null, { timeout: 15000 });
+  assert.equal(llamadas, 1, "el límite diario no se reintenta");
+  await foto("12-limite");
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

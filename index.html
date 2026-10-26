@@ -1226,6 +1226,11 @@ function herramientas(){
 
 function flash(id){ const m = document.getElementById(id); if(!m) return; m.classList.remove("flash"); void m.offsetWidth; m.classList.add("flash"); }
 
+function textoLimite(e){
+  if(e.diario) return "Se agotó el límite diario del motor. Volvé mañana o elegí otro motor en Menú → Partida.";
+  if(e.espera) return "El motor te pidió esperar unos " + e.espera + " segundos (límite por minuto del plan gratis). Tocá «Reintentar» en un momento.";
+  return "Llegaste al límite de uso del motor por ahora. Probá de nuevo en un rato.";
+}
 async function narrar(texto, {oculto=false, reusar=false}={}){
   if(running) return;
   if(!SAMPLE){ sysMsg("No hay un motor del Narrador configurado. Elegilo en Menú → Motor del Narrador.", "err", false); return; }
@@ -1256,7 +1261,7 @@ async function narrar(texto, {oculto=false, reusar=false}={}){
     await SAMPLE(input, opts);
   } catch(e){
     pensando.remove();
-    const msg = {auth:"El motor rechazó la clave. Revisala en Menú → Motor del Narrador.", red:"No se pudo conectar con el motor del Narrador. Revisá tu conexión o el motor elegido.", json:"El modelo no respondió en el formato esperado.", not_granted:"Para jugar, permití que la página use Claude (lo pide la primera vez).", rate_limited:"Llegaste al límite de uso de tu plan por ahora. Probá de nuevo más tarde.",
+    const msg = {auth:"El motor rechazó la clave. Revisala en Menú → Motor del Narrador.", red:"No se pudo conectar con el motor del Narrador. Revisá tu conexión o el motor elegido.", json:"El modelo no respondió en el formato esperado.", not_granted:"Para jugar, permití que la página use Claude (lo pide la primera vez).", rate_limited:textoLimite(e),
       session_expired:"Tu sesión de Claude venció. Volvé a iniciar sesión.", cancelled:"Narración detenida.", refused:"El Narrador no pudo responder a eso. Probá describir la acción de otra forma.",
       prompt_too_large:"La partida es demasiado larga para enviarla entera. Avisale al Director para resumir.", tools_unavailable:"Esta vista no permite herramientas: el motor de reglas no puede actuar."}[e.code]
       || "Se cortó la conexión con el Narrador. Tocá «Reintentar».";
@@ -3822,15 +3827,31 @@ let MOTOR = {tipo:"claude"}, SAMPLE_CLAUDE = null, TOOLS_CLAUDE = 0;
 try { MOTOR = JSON.parse(localStorage.getItem("bbn_ia") || "null") || MOTOR; } catch(_){}
 const errIA = (code, message, extra) => Object.assign(new Error(message || code), {code}, extra);
 
+const dormir = (ms, signal) => new Promise((ok, mal) => {
+  const t = setTimeout(ok, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(t); mal(errIA("cancelled")); }, {once:true});
+});
+// Cuántos segundos pide esperar el servicio: cabecera retry-after o «try again in 8.2s» en el mensaje.
+function esperaPedida(r, t){
+  const h = parseFloat(r.headers.get("retry-after")); if(h > 0) return h;
+  const m = /try again in\s+(?:(\d+)m)?\s*([\d.]+)s/i.exec(t || "");
+  return m ? (Number(m[1] || 0) * 60 + parseFloat(m[2])) : 0;
+}
 async function pedirIA({url, headers, body, signal, nombre}){
-  let r;
-  try { r = await fetch(url, {method:"POST", headers, body:JSON.stringify(body), signal}); }
-  catch(e){ if(e.name === "AbortError") throw errIA("cancelled"); throw errIA("red", "No se pudo conectar con " + nombre + ". " + e.message); }
-  if(!r.ok){
+  for(let intento = 0; ; intento++){
+    let r;
+    try { r = await fetch(url, {method:"POST", headers, body:JSON.stringify(body), signal}); }
+    catch(e){ if(e.name === "AbortError") throw errIA("cancelled"); throw errIA("red", "No se pudo conectar con " + nombre + ". " + e.message); }
+    if(r.ok) return r;
     const t = await r.text().catch(() => "");
-    throw errIA(r.status === 401 || r.status === 403 ? "auth" : r.status === 429 ? "rate_limited" : r.status === 413 ? "prompt_too_large" : "http_" + r.status, t.slice(0, 300));
+    if(r.status === 429){
+      const espera = esperaPedida(r, t), diario = /per day|TPD|RPD/i.test(t);
+      // Límite por minuto: esperar lo que pide el servicio y reintentar (hasta 2 veces, máx. 60 s cada una).
+      if(!diario && espera > 0 && espera <= 60 && intento < 2){ await dormir(Math.ceil(espera * 1000) + 500, signal); continue; }
+      throw errIA("rate_limited", t.slice(0, 300), {espera:Math.ceil(espera), diario});
+    }
+    throw errIA(r.status === 401 || r.status === 403 ? "auth" : r.status === 413 ? "prompt_too_large" : "http_" + r.status, t.slice(0, 300));
   }
-  return r;
 }
 async function leerSSE(r, alDato){
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -3867,6 +3888,7 @@ function crearMotorOpenAI(cfg){
     let acumulado = "";
     for(let vuelta = 0; vuelta < 8; vuelta++){
       const body = {model:cfg.modelo, messages:msgs, stream:true};
+      if(/gpt-oss/i.test(cfg.modelo)) body.reasoning_effort = "low";  // menos tokens de «pensar»: cuentan contra el límite por minuto
       if(tools.length) body.tools = tools;
       const r = await pedir(body, opts.signal);
       let texto = "", llamadas = [];
@@ -3895,8 +3917,9 @@ function crearMotorOpenAI(cfg){
   }
   ask.json = async (prompt, opts = {}) => {
     const msgs = [{role:"user", content:prompt + SOLO_JSON}];
-    let r; try { r = await pedir({model:cfg.modelo, messages:msgs, response_format:{type:"json_object"}}, opts.signal); }
-    catch(e){ if(!/^http_4/.test(e.code)) throw e; r = await pedir({model:cfg.modelo, messages:msgs}, opts.signal); }
+    const extra = /gpt-oss/i.test(cfg.modelo) ? {reasoning_effort:"low"} : {};
+    let r; try { r = await pedir({model:cfg.modelo, messages:msgs, response_format:{type:"json_object"}, ...extra}, opts.signal); }
+    catch(e){ if(!/^http_4/.test(e.code)) throw e; r = await pedir({model:cfg.modelo, messages:msgs, ...extra}, opts.signal); }
     return jsonDeTexto((await r.json()).choices?.[0]?.message?.content || "");
   };
   ask.limits = async () => ({tools:{maxCount:0}});
