@@ -619,6 +619,7 @@ const R = {
 };
 // La crónica (el universo) es independiente del personaje. Los personajes viejos usan su propio id como id de crónica.
 const CID = () => MUNDO?.cronica_id || PJ;
+const URL_CLAUDE = "https://claude.ai/artifact/1ZNPa2WaZXUM27VeTRzNxF";  // la misma app publicada como artefacto de Claude
 let DB = null, SAMPLE = null, TOOLS_MAX = 0;
 /* Cada jugador guarda todo en su espacio privado: data/users/<su id>/<colección>__<documento>.
    Nadie más lo ve, ni siquiera el dueño de la página. */
@@ -1485,6 +1486,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   ${F && !ajena ? `<div class="sec-lbl" style="margin-top:14px">Partida</div>
   <button class="menu-item" id="mi-partida" type="button"><b>${ia ? "Narrador IA" : "En mesa"}</b><small>${ia ? esc((CRON?.nombre || "Crónica") + (CRON?.tipo ? " · " + nombreTipo(CRON.tipo) : "")) : "Dados y ficha a mano. Tocá para jugar con Narrador IA."}</small></button>` : ""}
   <button class="menu-item" id="mi-motor" type="button"><b>Motor del Narrador</b><small>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}${MOTOR.tipo !== "claude" && MOTOR.modelo ? " · "+esc(MOTOR.modelo) : ""}</small></button>
+  ${PLATAFORMA === "local" ? `<button class="menu-item" id="mi-claude" type="button"><b>Jugar con Claude</b><small>Abre la app dentro de Claude y narra con tu cuenta, sin clave. Llevá tu personaje con Exportar e Importar.</small></button>` : ""}
   <div class="sec-lbl" style="margin-top:14px">Mis personajes</div>
   <div class="pjlist" id="mi-pjs"><p class="pen">Buscando personajes…</p></div>
   <button class="menu-item" id="mi-crear" type="button"><b>Crear un personaje nuevo</b><small>Paso a paso según el manual de V20.</small></button>
@@ -1506,6 +1508,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
     $("#mi-crear").onclick = () => { cerrarSheet(); abrirCreacion(); };
     $("#mi-imp").onclick = () => pedirArchivo(false);
     $("#mi-resp").onclick = respaldarTodo;
+    if($("#mi-claude")) $("#mi-claude").onclick = () => window.open(URL_CLAUDE, "_blank", "noopener");
     $("#mi-imp-j").onclick = () => pedirArchivo(true);
     if($("#mi-exp")) $("#mi-exp").onclick = () => exportarPersonaje();
     if(!DB){ $("#mi-pjs").innerHTML = '<p class="pen">No se pudo abrir el guardado de este dispositivo.</p>'; return; }

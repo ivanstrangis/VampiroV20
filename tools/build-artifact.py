@@ -21,6 +21,7 @@ cabeza = re.sub(r'<meta charset="utf-8">\n|<meta name="viewport"[^>]*>\n', "", c
 
 esqueleto = ('<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">'
              "<style>" + reset + "</style></head><body>\n")
+cabeza = cabeza.replace("<title>VampiroV20</title>", "<title>Vampiro V20 Narrador</title>")  # el artefacto pide un título de varias palabras
 pagina = esqueleto + cabeza.replace("</title>\n", '</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n', 1) + cuerpo + "</body></html>"
 
 destino = os.path.join(raiz, "dist")
