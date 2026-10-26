@@ -40,7 +40,7 @@ await prueba("dentro de Claude usa la plataforma de Claude y su Narrador", async
 });
 await prueba("la opción «Claude (tu cuenta)» está disponible y no se registra el service worker", async () => {
   await page.click("#btn-menu");
-  await page.click("#mi-motor");
+  if(await page.$("#mi-partida")){ await page.click("#mi-partida"); await page.click("#pm-motor"); } else await page.click("#mi-motor");
   await page.waitForSelector("#mo-tipo");
   const opciones = await page.$$eval("#mo-tipo option", o => o.map(x => ({ v: x.value, d: x.disabled })));
   assert.ok(opciones.some(o => o.v === "claude" && !o.d));

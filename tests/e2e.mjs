@@ -39,7 +39,7 @@ page.on("console", m => { if (m.type() === "error") errores.push("console: " + m
 
 const esperarListo = () => page.waitForFunction(() => document.querySelector("#pj-nombre") && document.querySelector("#pj-nombre").textContent !== "Cargando…", null, { timeout: 15000 });
 const foto = n => page.screenshot({ path: join(caps, n + ".png") });
-const abrirMenu = async () => { await page.click("#btn-menu"); await page.waitForSelector("#mi-x"); };
+const abrirMenu = async () => { await page.waitForTimeout(300); const x = await page.$("#pm-x"); if(x) await x.click(); await page.click("#btn-menu"); await page.waitForSelector("#mi-x"); };
 const idsPj = () => page.evaluate(() => listarPersonajes().then(l => l.map(p => p.id).sort()));
 const bajar = async (selector) => {
   await abrirMenu();
@@ -155,8 +155,10 @@ await prueba("sin clave, el narrador muestra el aviso y el resto de la app funci
   await page.reload(); await esperarListo();
   assert.equal(await page.evaluate(() => HAY_IA()), false);
   await abrirMenu();
+  await foto("10-menu");
   await page.click("#mi-partida");
   await page.waitForSelector('[data-pm="ia"]');
+  await foto("11-partida");
   await page.click('[data-pm="ia"]');
   await page.waitForSelector("#mo-aviso");
   const aviso = await page.textContent("#mo-aviso");
@@ -182,7 +184,7 @@ await prueba("la prueba de conexión con Groq arma bien la URL, los headers y el
       body: 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n' });
   });
   await abrirMenu();
-  await page.click("#mi-motor");
+  if(await page.$("#mi-partida")){ await page.click("#mi-partida"); await page.click("#pm-motor"); } else await page.click("#mi-motor");
   await page.waitForSelector("#mo-tipo");
   assert.equal(await page.inputValue("#mo-tipo"), "groq");
   assert.equal(await page.inputValue("#mo-base"), "https://api.groq.com/openai/v1");
@@ -221,7 +223,7 @@ await prueba("Claude por API arma bien la URL, los headers y el cuerpo", async (
     await route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body: ev.join("\n\n") + "\n\n" });
   });
   await abrirMenu();
-  await page.click("#mi-motor");
+  if(await page.$("#mi-partida")){ await page.click("#mi-partida"); await page.click("#pm-motor"); } else await page.click("#mi-motor");
   await page.waitForSelector("#mo-tipo");
   await page.selectOption("#mo-tipo", "anthropic");
   assert.equal(await page.inputValue("#mo-modelo"), "claude-sonnet-5-5");

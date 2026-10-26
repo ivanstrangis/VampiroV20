@@ -1484,8 +1484,8 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
     <button type="button" role="radio" aria-checked="${TEMA !== "claro"}" data-tema="oscuro"><b>Oscuro</b><small>Negro y plata</small></button>
     <button type="button" role="radio" aria-checked="${TEMA === "claro"}" data-tema="claro"><b>Claro</b><small>Fondo claro</small></button></div>
   ${F && !ajena ? `<div class="sec-lbl" style="margin-top:14px">Partida</div>
-  <button class="menu-item" id="mi-partida" type="button"><b>${ia ? "Narrador IA" : "En mesa"}</b><small>${ia ? esc((CRON?.nombre || "Crónica") + (CRON?.tipo ? " · " + nombreTipo(CRON.tipo) : "")) : "Dados y ficha a mano. Tocá para jugar con Narrador IA."}</small></button>` : ""}
-  <button class="menu-item" id="mi-motor" type="button"><b>Motor del Narrador</b><small>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}${MOTOR.tipo !== "claude" && MOTOR.modelo ? " · "+esc(MOTOR.modelo) : ""}</small></button>
+  <button class="menu-item" id="mi-partida" type="button"><b>${ia ? "Narrador " + esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)") : "Narrador en mesa"}</b><small>${esc(CRON?.nombre ? CRON.nombre + (CRON.tipo ? " · " + nombreTipo(CRON.tipo) : "") : ia ? "Crónica sin elegir" : "Dados y ficha a mano")} · tocá para cambiar crónica, modo o motor</small></button>` : `
+  <button class="menu-item" id="mi-motor" type="button"><b>Motor del Narrador</b><small>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}${MOTOR.tipo !== "claude" && MOTOR.modelo ? " · "+esc(MOTOR.modelo) : ""}</small></button>`}
   ${PLATAFORMA === "local" ? `<button class="menu-item" id="mi-claude" type="button"><b>Jugar con Claude</b><small>Abre la app dentro de Claude y narra con tu cuenta, sin clave. Llevá tu personaje con Exportar e Importar.</small></button>` : ""}
   <div class="sec-lbl" style="margin-top:14px">Mis personajes</div>
   <div class="pjlist" id="mi-pjs"><p class="pen">Buscando personajes…</p></div>
@@ -1501,7 +1501,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   <button class="menu-item" id="mi-imp-j" type="button"><b>Abrir la hoja de un jugador</b><small>Importá el archivo que te exportó para verla y llevarla en la mesa.</small></button>
   <div class="row"><button class="btn ghost" type="button" id="mi-x">Cerrar</button></div>`, async () => {
     $("#mi-x").onclick = cerrarSheet;
-    $("#mi-motor").onclick = () => abrirMotor();
+    if($("#mi-motor")) $("#mi-motor").onclick = () => abrirMotor();
     document.querySelectorAll("[data-tema]").forEach(b => b.onclick = () => { aplicarTema(b.dataset.tema); document.querySelectorAll("[data-tema]").forEach(x => x.setAttribute("aria-checked", x.dataset.tema === b.dataset.tema)); });
     if($("#mi-partida")) $("#mi-partida").onclick = () => { cerrarSheet(); abrirPartida(); };
     if(ia){ $("#mi-esc").onclick = () => { cerrarSheet(); cerrarEscena(); }; $("#mi-noche").onclick = () => { cerrarSheet(); confirmarNoche(); }; }
@@ -2768,15 +2768,16 @@ function abrirPartida(){
   <div class="seg" role="radiogroup" aria-label="Modo de juego">
     <button type="button" role="radio" aria-checked="${!ia}" data-pm="mesa"><b>En mesa</b><small>Narrador de carne y hueso</small></button>
     <button type="button" role="radio" aria-checked="${ia}" data-pm="ia"><b>Narrador IA</b><small>Crónica con IA</small></button></div>
-  ${ia ? `<div class="sec-lbl" style="margin-top:14px">Motor</div>
+  <div class="sec-lbl" style="margin-top:14px">Motor</div>
   <button class="menu-item" id="pm-motor" type="button"><b>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}</b><small>Narra y dirige la crónica. Tocá para cambiarlo.</small></button>
   <div class="sec-lbl" style="margin-top:14px">Crónica</div>
-  <button class="menu-item" id="pm-cron" type="button"><b>${esc(CRON?.nombre || "Crónica de " + F.nombre)}</b><small>${esc([nombreTipo(CRON?.tipo), "Noche " + (MUNDO.noche || 1)].filter(Boolean).join(" · "))} · tocá para cambiar de crónica</small></button>
-  <button class="menu-item" id="pm-exp" type="button"><b>Exportar crónica</b><small>Un archivo con el universo, para que otro jugador siga la historia.</small></button>` : ""}
+  <button class="menu-item" id="pm-cron" type="button"><b>${esc(CRON?.nombre || (MUNDO.cronica_id ? "Crónica de " + F.nombre : "Sin crónica"))}</b><small>${esc(CRON?.nombre ? [nombreTipo(CRON.tipo), "Noche " + (MUNDO.noche || 1)].filter(Boolean).join(" · ") + " · tocá para cambiar de crónica" : "Tocá para elegir o crear una crónica")}</small></button>
+  ${ia ? `<button class="menu-item" id="pm-exp" type="button"><b>Exportar crónica</b><small>Un archivo con el universo, para que otro jugador siga la historia.</small></button>` : ""}
   <div class="row"><button class="btn ghost" type="button" id="pm-x">Cerrar</button></div>`, () => {
     $("#pm-x").onclick = cerrarSheet;
     document.querySelectorAll("[data-pm]").forEach(b => b.onclick = () => { cerrarSheet(); if(b.dataset.pm === "mesa") cambiarModo("mesa"); else activarIA(); });
-    if(ia){ $("#pm-motor").onclick = () => abrirMotor(abrirPartida); $("#pm-cron").onclick = abrirCronicas; $("#pm-exp").onclick = exportarCronica; }
+    $("#pm-motor").onclick = () => abrirMotor(abrirPartida); $("#pm-cron").onclick = abrirCronicas;
+    if(ia) $("#pm-exp").onclick = exportarCronica;
   });
 }
 async function listarCronicas(){
