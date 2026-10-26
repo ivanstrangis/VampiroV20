@@ -1069,7 +1069,7 @@ CÓMO NARRAR
 - Describí lo que pasa alrededor y cómo reaccionan los PNJ, y parate en el primer momento en que al jugador le toque decidir. Que el mundo se mueva (alguien se acerca, algo suena) sí; que el personaje actúe por su cuenta, no.
 - Las opciones de sugerir_opciones son atajos, no un guion: nunca las des por elegidas ni empujes la escena hacia ellas.
 - Al terminar cada respuesta llamá a sugerir_opciones con 2 a 4 acciones posibles cortas (el jugador puede escribir cualquier otra cosa).
-- RELOJ: toda acción gasta tiempo (una charla corta 5 a 15 minutos, una caminata corta 10 a 20, una comida o un trámite 20 a 40). Llevá la cuenta y, cuando se acumulen unos 10 minutos o más desde la última hora fijada, o cambie el lugar, llamá a actualizar_escena con la hora nueva (formato 24 h, p. ej. «02:40») y un resumen corto. No hace falta que el jugador lo pida. Esto solo mueve el reloj: no le cambia el lugar ni le hace hacer nada que no dijo.
+- RELOJ: toda acción gasta tiempo (una charla corta 5 a 15 minutos, una caminata corta 10 a 20, una comida o un trámite 20 a 40). Llevá la cuenta y, cuando se acumulen unos 10 minutos o más desde la última hora fijada, o cambie el lugar, llamá a actualizar_escena con la hora nueva (formato 24 h, p. ej. «02:40») y un resumen corto. No hace falta que el jugador lo pida. Las herramientas son invisibles: JAMÁS escribas «dejé la hora en…», «actualicé la escena» ni nada parecido, y no agregues un mensaje aparte después de usarlas. Si querés marcar el paso del tiempo, hacelo de vez en cuando dentro de la propia narración («pasa media hora», «ya es de madrugada»), sin decir la hora exacta. Esto solo mueve el reloj: no le cambia el lugar ni le hace hacer nada que no dijo.
 
 REGLAS (el motor de reglas es la única fuente de verdad)
 - Nunca inventes números, tiradas, Sangre, daño ni objetos. Todo cambio pasa por las herramientas.
@@ -1223,9 +1223,9 @@ function herramientas(){
   tool("mostrar_visual", "Muestra una tarjeta visual: tipo pnj (nombre, subtítulo con clan o rol, breve descripción física) o lugar (título, subtítulo, descripción). Para el trayecto Barracas–San Telmo usá tipo mapa con clave barracas_santelmo.",
     {type:"object", properties:{tipo:{type:"string", enum:["pnj","lugar","mapa"]}, titulo:{type:"string"}, subtitulo:{type:"string"}, descripcion:{type:"string"}, clave:{type:"string"}}, required:["tipo","titulo"]},
     i => { turnoActual.agregar({rol:"visual", datos:{tipo:String(i.tipo), titulo:String(i.titulo), subtitulo:String(i.subtitulo||""), descripcion:String(i.descripcion||""), clave:String(i.clave||"")}}); return "ok"; });
-  tool("actualizar_escena", "Actualiza la hora, el lugar y el resumen corto de lo que pasó esta noche (2 o 3 oraciones, se usa como memoria).",
+  tool("actualizar_escena", "Actualiza la hora, el lugar y el resumen corto de lo que pasó esta noche (2 o 3 oraciones, se usa como memoria). Es silenciosa: el jugador ve el cambio en la cabecera, así que nunca escribas texto avisando que la usaste.",
     {type:"object", properties:{hora:{type:"string"}, lugar:{type:"string"}, resumen:{type:"string"}}},
-    i => { if(i.hora) MUNDO.hora = String(i.hora); if(i.lugar) MUNDO.lugar = String(i.lugar); if(i.resumen) MUNDO.resumen = String(i.resumen); guardarMundo(); refrescarCabecera(); return "ok"; });
+    i => { if(i.hora) MUNDO.hora = String(i.hora); if(i.lugar) MUNDO.lugar = String(i.lugar); if(i.resumen) MUNDO.resumen = String(i.resumen); guardarMundo(); refrescarCabecera(); return "ok (silencioso: el jugador ya ve la hora arriba; no digas que la actualizaste ni la repitas, seguí o terminá sin comentarlo)"; });
   tool("anotar", "Anota algo duradero que el personaje aprendió (contacto, pista, dato). Aparece en sus Notas.",
     {type:"object", properties:{texto:{type:"string"}, tema:{type:"string"}}, required:["texto"]},
     i => { CON.hechos = [...(CON.hechos||[]), {id:"h"+Date.now().toString(36), texto:String(i.texto), tema:String(i.tema||"notas")}]; guardarCon(); turnoActual.agregar({rol:"sistema", texto:"Notas · "+i.texto}); return "ok"; });
