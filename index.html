@@ -1007,7 +1007,12 @@ function pedidoCard(m){
   return d;
 }
 async function resolverPedido(m, el){
-  if(running){ sysMsg("Esperá a que el Narrador termine de escribir para tirar.", "", false); return; }
+  if(running){
+    // El jugador quiere tirar: se corta la narración en curso sin ruido (la tirada dispara la continuación).
+    running.silencioso = true; running.abort();
+    const t0 = Date.now(); while(running && Date.now() - t0 < 4000) await wait(40);
+    if(running){ sysMsg("Esperá a que el Narrador termine de escribir para tirar.", "", false); return; }
+  }
   const btn = el.querySelector("button"), p = m.datos;
   const usarFV = !!el.querySelector(`#fv-${m.n}`)?.checked;
   let info, arma = null;
@@ -1152,7 +1157,8 @@ let turnoActual = null;   // segmentos de texto y tarjetas del turno en curso
 function corteDeTexto(){ if(turnoActual) turnoActual.cortar(); }
 function herramientas(){
   const T = [];
-  const tool = (name, description, inputSchema, fn) => T.push({name, description, inputSchema, execute: async (input) => {
+  // cierraTurno: tras ejecutarla el motor no pide otra vuelta al modelo (el turno sigue en manos del jugador, p. ej. para tirar).
+  const tool = (name, description, inputSchema, fn, cierraTurno = false) => T.push({name, description, inputSchema, cierraTurno, execute: async (input) => {
     corteDeTexto();
     try { const r = fn(input || {}); guardarFicha(); guardarInv(); refrescarCabecera(); return r; }
     catch(e){ if(e instanceof ReglaError){ sysMsg("Motor de reglas · "+e.message, "rule"); throw new Error(e.message); } throw e; }
@@ -1162,7 +1168,7 @@ function herramientas(){
     i => { const p = {...i, dificultad:Math.min(10,Math.max(2,Number(i.dificultad)||6))}; const info = reservaTirada(p);
       if(p.arma){ const a = exigirObjeto(p.arma); validarDisparo(a, Math.max(1, Number(p.balas)||1)); p.arma = a.nombre; }
       turnoActual.agregar({rol:"pedido", datos:p, resuelto:false});
-      return `Tirada pedida: ${info.titulo}, ${info.reserva} dados, dificultad ${p.dificultad}${info.pen?` (incluye ${info.pen} por heridas)`:""}. Terminá tu mensaje ahora.`; });
+      return `Tirada pedida: ${info.titulo}, ${info.reserva} dados, dificultad ${p.dificultad}${info.pen?` (incluye ${info.pen} por heridas)`:""}. Terminá tu mensaje ahora.`; }, true);
   tool("tirada_pnj", "Tira dados por un PNJ o por el mundo con generador aleatorio. oculta=true si el jugador no debe ver el resultado (se sella y se revela al cerrar la escena). Devuelve los dados y los éxitos.",
     {type:"object", properties:{descripcion:{type:"string"}, dados:{type:"integer"}, dificultad:{type:"integer"}, oculta:{type:"boolean"}}, required:["descripcion","dados","dificultad"]},
     i => { const t = tirar(Math.min(30, Number(i.dados)||1), Math.min(10,Math.max(2,Number(i.dificultad)||6)));
@@ -1259,8 +1265,12 @@ async function narrar(texto, {oculto=false, reusar=false}={}){
     agregar(m){ pensando.remove(); const r = nuevoMsg(m); return r; }
   };
   try {
+    // Si el motor pide esperar (límite por minuto), se avisa en pantalla para que no parezca colgado.
+    let esperando = null;
     const opts = {signal:running.signal, cache:false, effort:"low",
-      onText: ({text}) => { pensando.remove(); full = text; const seg = text.slice(cortado);
+      onEspera: s => { if(!esperando){ esperando = document.createElement("div"); esperando.className = "thinking"; chat.appendChild(esperando); }
+        esperando.textContent = "El motor pidió esperar unos " + s + " segundos (límite por minuto)…"; scrollChat(); },
+      onText: ({text}) => { pensando.remove(); esperando?.remove(); esperando = null; full = text; const seg = text.slice(cortado);
         if(!seg.trim()) return; if(!bubble) nuevaBurbuja(); segs[segs.length-1].texto = seg; bubble.querySelector(".txt").innerHTML = parrafos(seg.trim()); scrollChat(); } };
     const tools = herramientas(); if(tools.length) opts.tools = tools;
     await SAMPLE(input, opts);
@@ -1270,10 +1280,10 @@ async function narrar(texto, {oculto=false, reusar=false}={}){
       session_expired:"Tu sesión de Claude venció. Volvé a iniciar sesión.", cancelled:"Narración detenida.", refused:"El Narrador no pudo responder a eso. Probá describir la acción de otra forma.",
       prompt_too_large:"La partida es demasiado larga para enviarla entera. Avisale al Director para resumir.", tools_unavailable:"Esta vista no permite herramientas: el motor de reglas no puede actuar."}[e.code]
       || "Se cortó la conexión con el Narrador. Tocá «Reintentar».";
-    sysMsg(msg, e.code === "cancelled" ? "" : "err", false);
+    if(!(e.code === "cancelled" && running?.silencioso)) sysMsg(msg, e.code === "cancelled" ? "" : "err", false);
     if(e.code !== "cancelled" && e.code !== "not_granted") MUNDO.opciones = ["Reintentar"];
   } finally {
-    guardarTextos(segs);
+    guardarTextos(segs); chat.querySelectorAll(".thinking").forEach(x => x.remove());
     running = null; turnoActual = null; setBusy(false); renderChips(); guardarFicha(); refrescarCabecera();
   }
 }
@@ -3842,7 +3852,7 @@ function esperaPedida(r, t){
   const m = /try again in\s+(?:(\d+)m)?\s*([\d.]+)s/i.exec(t || "");
   return m ? (Number(m[1] || 0) * 60 + parseFloat(m[2])) : 0;
 }
-async function pedirIA({url, headers, body, signal, nombre}){
+async function pedirIA({url, headers, body, signal, nombre, alEsperar}){
   for(let intento = 0; ; intento++){
     let r;
     try { r = await fetch(url, {method:"POST", headers, body:JSON.stringify(body), signal}); }
@@ -3852,7 +3862,7 @@ async function pedirIA({url, headers, body, signal, nombre}){
     if(r.status === 429){
       const espera = esperaPedida(r, t), diario = /per day|TPD|RPD/i.test(t);
       // Límite por minuto: esperar lo que pide el servicio y reintentar (hasta 2 veces, máx. 60 s cada una).
-      if(!diario && espera > 0 && espera <= 60 && intento < 2){ await dormir(Math.ceil(espera * 1000) + 500, signal); continue; }
+      if(!diario && espera > 0 && espera <= 60 && intento < 2){ try { alEsperar?.(Math.ceil(espera)); } catch(_){} await dormir(Math.ceil(espera * 1000) + 500, signal); continue; }
       throw errIA("rate_limited", t.slice(0, 300), {espera:Math.ceil(espera), diario});
     }
     throw errIA(r.status === 401 || r.status === 403 ? "auth" : r.status === 413 ? "prompt_too_large" : "http_" + r.status, t.slice(0, 300));
@@ -3886,8 +3896,10 @@ function crearMotorOpenAI(cfg){
   const url = (cfg.base || "").replace(/\/+$/, "") + "/chat/completions";
   const headers = {"Content-Type":"application/json", ...(cfg.clave ? {Authorization:"Bearer " + cfg.clave} : {})};
   const nombre = MOTORES[cfg.tipo]?.nombre || "el servicio";
-  const pedir = (body, signal) => pedirIA({url, headers, body, signal, nombre});
+  let alEsperar = null;
+  const pedir = (body, signal) => pedirIA({url, headers, body, signal, nombre, alEsperar});
   async function ask(input, opts = {}){
+    alEsperar = opts.onEspera || null;
     const msgs = entrada(input);
     const tools = (opts.tools || []).map(t => ({type:"function", function:{name:t.name, description:t.description, parameters:t.inputSchema || {type:"object", properties:{}}}}));
     let acumulado = "";
@@ -3910,13 +3922,15 @@ function crearMotorOpenAI(cfg){
       if(!llamadas.length) return {text:acumulado};
       const ids = llamadas.map((c, n) => c.id || "call_" + vuelta + "_" + n);
       msgs.push({role:"assistant", content:texto || null, tool_calls:llamadas.map((c, n) => ({id:ids[n], type:"function", function:{name:c.name, arguments:c.args || "{}"}}))});
+      let cierra = false;
       for(let n = 0; n < llamadas.length; n++){
         const c = llamadas[n], t = (opts.tools || []).find(x => x.name === c.name); let res;
-        try { if(!t) throw new Error("Herramienta desconocida: " + c.name); res = await t.execute(jsonSeguro(c.args)); }
+        try { if(!t) throw new Error("Herramienta desconocida: " + c.name); res = await t.execute(jsonSeguro(c.args)); if(t.cierraTurno) cierra = true; }
         catch(e){ res = "Error: " + (e.message || e); }
         msgs.push({role:"tool", tool_call_id:ids[n], content:typeof res === "string" ? res : JSON.stringify(res ?? "ok")});
       }
       if(opts.signal?.aborted) throw errIA("cancelled");
+      if(cierra) return {text:acumulado};  // p. ej. tirada pedida: ahora le toca al jugador, no hace falta otra vuelta
     }
     return {text:acumulado};
   }
@@ -3935,8 +3949,10 @@ function crearMotorOpenAI(cfg){
 function crearMotorAnthropic(cfg){
   const url = (cfg.base || "https://api.anthropic.com/v1").replace(/\/+$/, "") + "/messages";
   const headers = {"Content-Type":"application/json", "x-api-key":cfg.clave, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"};
-  const pedir = (body, signal) => pedirIA({url, headers, body, signal, nombre:"Claude"});
+  let alEsperar = null;
+  const pedir = (body, signal) => pedirIA({url, headers, body, signal, nombre:"Claude", alEsperar});
   async function ask(input, opts = {}){
+    alEsperar = opts.onEspera || null;
     const msgs = entrada(input);
     const tools = (opts.tools || []).map(t => ({name:t.name, description:t.description, input_schema:t.inputSchema || {type:"object", properties:{}}}));
     let acumulado = "";
@@ -3961,15 +3977,16 @@ function crearMotorAnthropic(cfg){
       const usos = bloques.filter(b => b?.type === "tool_use");
       if(parada !== "tool_use" || !usos.length) return {text:acumulado};
       msgs.push({role:"assistant", content:bloques.filter(b => b && (b.type === "tool_use" || b.text.trim())).map(b => b.type === "text" ? {type:"text", text:b.text} : {type:"tool_use", id:b.id, name:b.name, input:jsonSeguro(b.json)})});
-      const resultados = [];
+      const resultados = []; let cierra = false;
       for(const u of usos){
         const t = (opts.tools || []).find(x => x.name === u.name); let res, error = false;
-        try { if(!t) throw new Error("Herramienta desconocida: " + u.name); res = await t.execute(jsonSeguro(u.json)); }
+        try { if(!t) throw new Error("Herramienta desconocida: " + u.name); res = await t.execute(jsonSeguro(u.json)); if(t.cierraTurno) cierra = true; }
         catch(e){ res = "Error: " + (e.message || e); error = true; }
         resultados.push({type:"tool_result", tool_use_id:u.id, content:typeof res === "string" ? res : JSON.stringify(res ?? "ok"), ...(error ? {is_error:true} : {})});
       }
       msgs.push({role:"user", content:resultados});
       if(opts.signal?.aborted) throw errIA("cancelled");
+      if(cierra) return {text:acumulado};  // p. ej. tirada pedida: ahora le toca al jugador, no hace falta otra vuelta
     }
     return {text:acumulado};
   }

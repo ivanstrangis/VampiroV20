@@ -294,6 +294,64 @@ await prueba("límite por minuto de Groq: espera lo que pide el servicio y reint
   await foto("12-limite");
 });
 
+// Respuestas simuladas de Groq para las pruebas de tiradas.
+const sseGroq = (...trozos) => trozos.map(c => "data: " + JSON.stringify(c)).join("\n\n") + "\n\ndata: [DONE]\n\n";
+const corsGroq = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-expose-headers": "retry-after" };
+const pedirTiradaGroq = sseGroq({ choices: [{ delta: { content: "Te acercás sin hacer ruido. " } }] },
+  { choices: [{ delta: { tool_calls: [{ index: 0, id: "t1", function: { name: "tirada_jugador", arguments: JSON.stringify({ motivo: "resistir la tentación", rasgo: "fuerza_de_voluntad", dificultad: 6 }) } }] } }] });
+const textoGroq = t => sseGroq({ choices: [{ delta: { content: t } }] });
+const hayResultado = body => String(body.messages?.at(-1)?.content || "").includes("Resultado de la tirada");
+const prepararIA = () => page.evaluate(() => { try { cerrarSheet(); } catch(_) {} MUNDO.modo = "ia"; MUNDO.cronica_id = PJ; GUIA = { premisa: "p", pnj: [] }; CRON = { nombre: "Prueba", tipo: "libre" }; aplicarModo(); mostrarPestana("chat"); });
+
+await prueba("una tirada pedida por el Narrador cierra el turno y se tira sin tocar Detener", async () => {
+  let llamadas = 0;
+  await ctx.unroute("https://api.groq.com/**");
+  await ctx.route("https://api.groq.com/**", async route => {
+    const req = route.request();
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsGroq });
+    const body = JSON.parse(req.postData() || "{}"); llamadas++;
+    if (llamadas === 1) return route.fulfill({ status: 200, headers: { ...corsGroq, "content-type": "text/event-stream" }, body: pedirTiradaGroq });
+    if (hayResultado(body)) return route.fulfill({ status: 200, headers: { ...corsGroq, "content-type": "text/event-stream" }, body: textoGroq("Resistís y seguís de largo.") });
+    // Una vuelta extra sin resultado de la tirada no debería pedirse: con Groq real se queda esperando el límite por minuto.
+    return route.fulfill({ status: 429, headers: { ...corsGroq, "retry-after": "30" }, contentType: "application/json", body: '{"error":{"message":"Please try again in 30s."}}' });
+  });
+  await prepararIA();
+  await page.evaluate(() => { narrar("Me acerco despacio"); });
+  await page.waitForFunction(() => !running, null, { timeout: 5000 });
+  assert.equal(llamadas, 1, "el turno debía terminar sin pedir otra vuelta al motor");
+  assert.equal(await page.evaluate(() => document.querySelector("#btn-send").textContent.trim()), "Enviar");
+  const tirar = page.locator("#chat .dice button").last();
+  await tirar.click();
+  await page.waitForFunction(() => document.querySelector("#chat").textContent.includes("Resistís y seguís de largo."), null, { timeout: 15000 });
+  await page.waitForFunction(() => !running, null, { timeout: 5000 });
+  assert.ok(!(await page.textContent("#chat")).includes("Narración detenida"), "no hizo falta detener nada");
+  await foto("13-tirada");
+});
+
+await prueba("si el Narrador todavía está escribiendo, tirar lo detiene solo y sigue", async () => {
+  let colgadas = 0;
+  await ctx.unroute("https://api.groq.com/**");
+  await ctx.route("https://api.groq.com/**", async route => {
+    const req = route.request();
+    if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: corsGroq });
+    const body = JSON.parse(req.postData() || "{}");
+    if (String(body.messages?.at(-1)?.content || "").includes("Resultado de la tirada «contener la sed»")) return route.fulfill({ status: 200, headers: { ...corsGroq, "content-type": "text/event-stream" }, body: textoGroq("Tu sed cede un instante.") });
+    colgadas++; await new Promise(r => setTimeout(r, 6000)); await route.abort().catch(() => {});
+  });
+  await prepararIA();
+  await page.evaluate(() => { nuevoMsg({ rol: "pedido", datos: { motivo: "contener la sed", rasgo: "fuerza_de_voluntad", dificultad: 6 }, resuelto: false }); narrar("Sigo caminando"); });
+  await page.waitForFunction(() => !!running, null, { timeout: 5000 });
+  for (let i = 0; i < 100 && !colgadas; i++) await page.waitForTimeout(50);  // el pedido ya está en el motor, sin respuesta
+  assert.ok(colgadas >= 1, "el Narrador debía estar esperando respuesta");
+  await page.locator("#chat .dice button").last().click();
+  await page.waitForFunction(() => document.querySelector("#chat").textContent.includes("Tu sed cede un instante."), null, { timeout: 15000 });
+  await page.waitForFunction(() => !running, null, { timeout: 5000 });
+  const chatTxt = await page.textContent("#chat");
+  assert.ok(!chatTxt.includes("Narración detenida"), "el corte automático no debe mostrar «Narración detenida»");
+  assert.ok(!chatTxt.includes("Esperá a que el Narrador termine"), "no debe pedir esperar");
+  assert.ok(colgadas >= 1);
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
