@@ -1103,7 +1103,7 @@ function contexto(){
   };
   const desc = o => o.nombre + (o.tipo==="arma_fuego"?` (${MECANISMO[normArma(o).mecanismo]}; ${estadoArma(o)}; daño ${o.dano}, cadencia ${o.cadencia})`:"") + (o.tipo==="cargador"?` (${o.balas} balas)`:"") + (o.nota?` — ${o.nota}`:"");
   const inv = encima().map(desc);
-  const guardado = refugios().map(r => `${r.nombre}${r.descripcion?" ("+r.descripcion+")":""}: ${INV.items.filter(o => o.lugar === r.id).map(desc).join("; ") || "nada guardado"}`);
+  const guardado = refugios().map(r => `${r.nombre}${r.descripcion?" ("+r.descripcion+")":""}${r.notas?" [notas del jugador: "+String(r.notas).slice(0,240)+"]":""}: ${INV.items.filter(o => o.lugar === r.id).map(desc).join("; ") || "nada guardado"}`);
   return `${INSTRUCCIONES}
 
 === PERSONAJE (ficha actual, fuente de verdad) ===
@@ -1443,12 +1443,14 @@ function renderInv(){
     ${o.tipo==="arma_fuego"?armaHTML(o):""}</div></div>`;
   const lleva = encima(), armas = lleva.filter(o => ["arma_fuego","arma_cc","cargador"].includes(o.tipo)), resto = lleva.filter(o => !armas.includes(o));
   const refs = refugios().map(r => { const hay = INV.items.filter(o => o.lugar === r.id);
-    return `<section class="blk refugio"><h2>${esc(r.nombre)}</h2>${r.descripcion?`<p class="pen" style="margin:0 0 6px">${esc(r.descripcion)}</p>`:""}${hay.map(it).join("") || '<p class="pen">Nada guardado.</p>'}</section>`; }).join("");
+    return `<section class="blk refugio"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">${esc(r.nombre)}</h2>${mesa ? `<button class="btn ghost" type="button" data-ref="${esc(r.id)}" style="padding:4px 10px">Editar</button>` : ""}</div>${r.descripcion?`<p class="pen" style="margin:6px 0 0">${esc(r.descripcion)}</p>`:""}${r.notas?`<p class="pen" style="margin:6px 0 0;white-space:pre-wrap">${esc(r.notas)}</p>`:""}<div style="margin-top:8px">${hay.map(it).join("") || '<p class="pen">Nada guardado.</p>'}</div></section>`; }).join("");
   $("#s-inv").innerHTML = (mesa ? `<section class="blk"><div class="barra3 b4"><button class="btn ghost" type="button" data-nuevo="fuego">+ Arma de fuego</button><button class="btn ghost" type="button" data-nuevo="cc">+ Cuerpo a cuerpo</button><button class="btn ghost" type="button" data-nuevo="objeto">+ Objeto</button></div><p class="pen" style="margin:8px 0 0">Tocá el nombre de un objeto para editarlo.</p></section>` : "") +
     `<div class="money"><span class="mlbl">Dinero</span><span class="num">${pesos(INV.dinero)}</span>${mesa ? '<button class="btn ghost" type="button" id="inv-din" style="padding:4px 10px">Editar</button>' : ""}</div>
     <section class="blk"><h2>Encima</h2><div class="sec-lbl">Armas</div>${armas.map(it).join("")||'<p class="pen">—</p>'}<div class="sec-lbl" style="margin-top:14px">Equipo</div>${resto.map(it).join("")||'<p class="pen">—</p>'}</section>
-    <div class="sec-lbl" style="margin-bottom:10px">Refugios</div>${refs || '<p class="pen">Sin refugios.</p>'}`;
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><div class="sec-lbl" style="margin:0">Refugios</div>${mesa ? '<button class="btn ghost" type="button" id="ref-nuevo">+ Refugio</button>' : ""}</div>${refs || '<p class="pen">No tiene refugios.</p>'}`;
   if(mesa){
+    document.querySelectorAll("[data-ref]").forEach(b => b.onclick = () => abrirRefugio(b.dataset.ref));
+    $("#ref-nuevo").onclick = () => abrirRefugio(null);
     document.querySelectorAll("[data-obj]").forEach(b => b.onclick = () => abrirObjeto(b.dataset.obj));
     document.querySelectorAll("[data-nuevo]").forEach(b => b.onclick = () => abrirObjeto(null, b.dataset.nuevo));
     $("#inv-din").onclick = abrirDinero;
@@ -1636,7 +1638,7 @@ async function despertarYNarrar(){
     else sysMsg("Despierta con la Sangre en 0: hambre extrema.", "blood");
   } catch(e){ regla(e); }
   guardarFicha(); guardarMundo(); refrescarCabecera();
-  narrar(`[Comienza la noche ${MUNDO.noche}. ${F.nombre} despierta en ${MUNDO.lugar || "su refugio"}. Narrá el despertar y retomá la historia.]`, {oculto:true});
+  narrar(`[Comienza la noche ${MUNDO.noche}. ${F.nombre} despierta en ${MUNDO.lugar || "algún sitio donde pasó el día"}. Narrá el despertar y retomá la historia.]`, {oculto:true});
 }
 
 /* =====================================================================
@@ -1888,6 +1890,7 @@ const RECURSOS_INICIO = [
   {dinero:150000000, equipo:15, texto:"Recursos 5: extremadamente rico."}];
 const limiteRecursos = () => RECURSOS_INICIO[Math.min(totalRasgo("trasfondo","recursos"), 5)];
 const lineasEquipo = () => W.equipo.split("\n").map(x => x.trim()).filter(Boolean);
+const lineasRefugio = () => W.refugio.split("\n").map(x => x.trim()).filter(Boolean);
 const primerPasoInvalido = () => { for(let s=0; s<9; s++) if(validarPaso(s)) return s; return -1; };
 
 function pick(id, v, min, max){
@@ -1990,7 +1993,7 @@ function renderWz(){
     html = head("Toques finales", "Cómo se ve, dónde duerme y con qué arranca. Al final, el Narrador revisa que sea coherente.") +
       `<div class="clan-detail" style="margin:0 0 12px">${esc(lim.texto)}<br>Como referencia: hasta ${pesos(lim.dinero)} y unos ${lim.equipo} objetos encima. El Narrador decide si lo que cargues es válido.</div>` +
       `<div class="field"><label for="w-desc">Descripción</label><textarea id="w-desc" placeholder="Aspecto, ropa, un detalle que lo delate">${esc(W.desc)}</textarea></div>
-      <div class="field"><label for="w-refugio">Refugio</label><input id="w-refugio" value="${esc(W.refugio)}" placeholder="Ej.: un PH sin ventanas en Boedo"></div>
+      <div class="field"><label for="w-refugio">Refugios (uno por línea; dejalo vacío si no tiene ninguno)</label><textarea id="w-refugio" placeholder="Un PH sin ventanas en Boedo&#10;Un depósito en Barracas">${esc(W.refugio)}</textarea></div>
       <div class="field"><label for="w-equipo">Equipo que lleva encima (uno por línea)</label><textarea id="w-equipo" placeholder="Celular&#10;Navaja&#10;Llaves del auto">${esc(W.equipo)}</textarea></div>
       <div class="field"><label for="w-dinero">Dinero en pesos</label><input id="w-dinero" type="number" min="0" step="1000" value="${W.dinero||0}"></div>
       <div class="cat"><div class="cat-h"><b>Sangre inicial</b><span class="pen">1d10${totalRasgo("trasfondo","dominio") ? " + "+totalRasgo("trasfondo","dominio")+" por Dominio" : ""} · reserva máx. ${reserva}</span></div>
@@ -2008,7 +2011,7 @@ function renderWz(){
       fila("Humanidad · FV · Sangre", `${f.humanidad} · ${f.fv_max} · ${f.sangre}/${GEN[f.generacion][1]}`) +
       fila("Méritos", W.myd.filter(x => x.tipo === "Mérito").map(x => esc(conDetalle(x))+" · "+x.puntos+(x.propio?" · propio":"")).join(", ") || "—") +
       fila("Defectos", W.myd.filter(x => x.tipo === "Defecto").map(x => esc(conDetalle(x))+" · "+x.puntos+(x.propio?" · propio":"")).join(", ") || "—") +
-      fila("Refugio", esc(W.refugio || "Refugio")) + fila("Equipo · Dinero", `${lineasEquipo().map(esc).join(", ") || "—"} · ${pesos(W.dinero)}`) +
+      fila(lineasRefugio().length === 1 ? "Refugio" : "Refugios", lineasRefugio().map(esc).join(", ") || "Ninguno") + fila("Equipo · Dinero", `${lineasEquipo().map(esc).join(", ") || "—"} · ${pesos(W.dinero)}`) +
       `<p class="err" role="status">${malo >= 0 ? `Falta completar el paso «${PASOS[malo]}»: ${esc(validarPaso(malo))}` : ""}</p>
       <div class="wz-nav"><button class="btn ghost" type="button" id="wz-back">Atrás</button><button class="btn" type="button" id="wz-crear" ${malo>=0||W.guardando?"disabled":""}>${W.guardando?"Guardando…":"Crear personaje"}</button></div>`;
     wz.innerHTML = html; enlazarWz(wz); wz.scrollTop = 0;
@@ -2135,7 +2138,7 @@ function unirFrentes(c, lista){
 
 // 1) Al crear el personaje (o al pasar a IA): el cuaderno del Director.
 async function crearCuaderno(f, refugio, opc = {}){
-  const base = {hora:"al anochecer", lugar:refugio || "su refugio",
+  const base = {hora:"al anochecer", lugar:refugio || "algún sitio donde pasó el día",
     historia:`${f.concepto ? f.concepto+". " : ""}${f.clan_nombre || ""}, ${f.generacion}ª Generación.${f.descripcion ? " "+f.descripcion : ""} Es su primera noche jugada en la crónica.`,
     cuaderno:{premisa:"Crónica por definir: el Director la arma en la primera consulta.", ciudad:"", frentes:[], pnj:[], misterios:[], canon:[], ganchos:[]}};
   if(!SAMPLE) return {...base, fallo:true};
@@ -2188,7 +2191,7 @@ Crónica:
 ${cronicaParaDirector()}
 
 Personaje: ${JSON.stringify(fichaCorta(F))}
-Dónde despierta: ${MUNDO.lugar || "su refugio"}. Lo que sabe: ${(CON.hechos||[]).map(h => h.texto).join(" | ")}`;
+Dónde despierta: ${MUNDO.lugar || "algún sitio donde pasó el día"}. Lo que sabe: ${(CON.hechos||[]).map(h => h.texto).join(" | ")}`;
   try {
     const r = await SAMPLE.json(prompt, {cache:false});
     if(r && r.instruccion){
@@ -2286,12 +2289,13 @@ async function crearPersonaje(){
   const f = armarFichaW();
   f.revision_narrador = {aprobado:null, observaciones:["Lo revisa el Narrador."], fecha:new Date().toISOString()};
   const id = (norm(f.nombre_real).replace(/[^a-z0-9_]/g,"").slice(0,24) || "pj") + "_" + Date.now().toString(36);
-  const refugio = W.refugio.trim() || "Refugio";
+  const nombresRef = lineasRefugio();
+  const refugios_ = nombresRef.map((nombre, i) => ({id: i === 0 ? "refugio" : "refugio" + (i + 1), nombre, descripcion:"", notas:""}));
   const items = W.equipo.split("\n").map(x => x.trim()).filter(Boolean).map((nombre,i) => ({id:"obj"+(i+1), nombre, tipo:"equipo", lugar:ENCIMA}));
   const docs = [
     ["personajes/"+id, f],
-    ["inventario/"+id, {items, refugios:[{id:"refugio", nombre:refugio}], dinero:W.dinero||0}],
-    ["conocimiento/"+id, {hechos:[{id:"refugio", texto:`Su refugio: ${refugio}.`, tema:"mateo"}]}],
+    ["inventario/"+id, {items, refugios:refugios_, dinero:W.dinero||0}],
+    ["conocimiento/"+id, {hechos: nombresRef.length ? [{id:"refugio", texto:`${nombresRef.length === 1 ? "Su refugio" : "Sus refugios"}: ${nombresRef.join("; ")}.`, tema:"mateo"}] : []}],
     ["notas/"+id, {texto:""}],
     ["mundo/"+id, {modo:"mesa", registro_mesa:[]}]];
   try {
@@ -2716,10 +2720,10 @@ async function revisarConNarrador(f){
     virtudes:f.virtudes, humanidad:f.humanidad, fuerza_de_voluntad:f.fv_max,
     meritos:W.myd.filter(x => x.tipo === "Mérito").map(x => `${conDetalle(x)} (${x.puntos})${x.propio ? " [propio: "+x.desc+"]" : ""}`),
     defectos:W.myd.filter(x => x.tipo === "Defecto").map(x => `${conDetalle(x)} (${x.puntos})${x.propio ? " [propio: "+x.desc+"]" : ""}`),
-    refugio:W.refugio, equipo_encima:lineasEquipo(), dinero_pesos:W.dinero||0,
+    refugios:lineasRefugio(), equipo_encima:lineasEquipo(), dinero_pesos:W.dinero||0,
     guia_recursos:`Recursos ${rec}: ${limiteRecursos().texto} Referencia: hasta ${pesos(limiteRecursos().dinero)} y ${limiteRecursos().equipo} objetos.`};
   const prompt = `Sos el Narrador de una crónica de Vampiro: La Mascarada 20º Aniversario en Buenos Aires (año actual). Un jugador terminó de crear su personaje; los puntos ya fueron validados por el motor de reglas. Tu trabajo es decidir si el personaje es VÁLIDO para la mesa, como haría un Narrador en la creación:
-- ¿El equipo, el dinero y el refugio son coherentes con su Trasfondo Recursos y su concepto? (armas, vehículos o cosas caras con Recursos bajos: no).
+- ¿El equipo, el dinero y los refugios (puede no tener ninguno) son coherentes con su Trasfondo Recursos y su concepto? (armas, vehículos o cosas caras con Recursos bajos: no).
 - Méritos y Defectos propios (marcados [propio]): ¿el efecto es claro y el costo en puntos es justo comparado con los del manual? Si no, proponé el costo correcto.
 - Méritos o Defectos del manual: ¿son compatibles con el clan y el concepto? (por ejemplo, Temperamental o Corazón Calmado no van con Brujah; Monstruoso no va con Nosferatu).
 - ¿El concepto, la Naturaleza y la Conducta tienen sentido juntos?
@@ -2834,7 +2838,7 @@ function abrirNuevaCronica(){
       const tipo = TIPOS_CRONICA.find(t => t.id === NC.tipo), idea = NC.idea.trim();
       if(NC.tipo === "libre" && !idea){ err.textContent = "Contanos la idea para que el Director pueda armarla."; return; }
       btn.disabled = true; btn.textContent = "El Director arma la crónica…";
-      const refugio = (INV.refugios || [])[0]?.nombre || "su refugio";
+      const refugio = (INV.refugios || [])[0]?.nombre || "algún sitio donde pasó el día";
       const g = await crearCuaderno(F, refugio, {tipo: tipo.pauta ? tipo.nombre + ": " + tipo.pauta : "", idea});
       if(g.fallo){ btn.disabled = false; btn.textContent = "Crear crónica";
         err.textContent = {auth:"El motor rechazó la clave.", rate_limited:"Llegaste al límite del motor; probá en un rato.", red:"No se pudo conectar con el motor."}[g.error?.code] || "El motor no pudo armar la crónica. Probá de nuevo o elegí otro motor."; return; }
@@ -2848,7 +2852,7 @@ function abrirNuevaCronica(){
 }
 // Ata al personaje a una crónica y recarga la partida. Lo anterior que se haya dicho en el chat deja de mandarse al Narrador.
 async function ponerEnCronica(cid, e){
-  const refugio = (INV.refugios || [])[0]?.nombre || "su refugio";
+  const refugio = (INV.refugios || [])[0]?.nombre || "algún sitio donde pasó el día";
   Object.assign(MUNDO, {modo:"ia", cronica_id:cid, noche:e.noche || 1, hora:e.hora || "al anochecer", lugar:e.lugar || refugio, lugar_refugio:refugio,
     historia:e.historia || "", resumen:"", opciones:[], sellos:[], cierre_n:Math.max(MUNDO.cierre_n || 0, ...MSGS.map(m => m.n || 0))});
   await guardarMundo();
@@ -3677,6 +3681,36 @@ function abrirDinero(){
         const r = cambiarDinero(signo * n, m); anotarMesa(`Dinero: ${signo<0?"−":"+"}${pesos(n)} (${m}) · queda ${pesos(r.ahora)}`);
         guardarInv(); cerrarSheet(); renderInv(); } catch(e){ $("#di-err").textContent = e.message; } };
     $("#di-menos").onclick = () => mover(-1); $("#di-mas").onclick = () => mover(1);
+  });
+}
+
+/* ---------- refugios: agregar, editar y borrar a mano (modo mesa) ---------- */
+function abrirRefugio(id){
+  const r = id ? refugios().find(x => x.id === id) : null;
+  const hay = r ? INV.items.filter(o => o.lugar === r.id).length : 0;
+  abrirSheet(`<h2>${r ? "Editar refugio" : "Nuevo refugio"}</h2>
+    <div class="field"><label for="rf-n">Nombre</label><input id="rf-n" value="${esc(r?.nombre || "")}" placeholder="Ej.: un PH sin ventanas en Boedo"></div>
+    <div class="field"><label for="rf-d">Descripción corta</label><input id="rf-d" value="${esc(r?.descripcion || "")}" placeholder="Dónde queda, cómo es"></div>
+    <div class="field"><label for="rf-t">Notas</label><textarea id="rf-t" style="min-height:140px" placeholder="Accesos, seguridad, quién lo conoce, mejoras…">${esc(r?.notas || "")}</textarea></div>
+    <p class="err" id="rf-err"></p>
+    <div class="row">${r ? '<button class="btn ghost" type="button" id="rf-del" style="margin-right:auto">Borrar</button>' : ""}<button class="btn ghost" type="button" id="rf-x">Cancelar</button><button class="btn" type="button" id="rf-ok">Guardar</button></div>`, () => {
+    $("#rf-x").onclick = cerrarSheet;
+    const del = $("#rf-del"); if(del) del.onclick = () => {
+      if(!del.dataset.ok){ del.dataset.ok = "1"; del.textContent = hay ? `Tocá de nuevo: ${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Encima` : "Tocá de nuevo para borrar"; return; }
+      INV.items.forEach(o => { if(o.lugar === r.id) o.lugar = ENCIMA; });
+      INV.refugios = refugios().filter(x => x.id !== r.id);
+      evento("refugio_borrado", {refugio:r.id, nombre:r.nombre, objetos_a_encima:hay}); anotarMesa(`Refugio: se borra ${r.nombre}${hay ? ` (${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Encima)` : ""}`);
+      guardarInv(); cerrarSheet(); renderInv(); };
+    $("#rf-ok").onclick = () => {
+      const nombre = $("#rf-n").value.trim();
+      if(!nombre) return void ($("#rf-err").textContent = "Ponele un nombre.");
+      if(refugios().some(x => x.id !== r?.id && norm(x.nombre) === norm(nombre))) return void ($("#rf-err").textContent = "Ya tenés un refugio con ese nombre.");
+      const datos = {nombre, descripcion:$("#rf-d").value.trim(), notas:$("#rf-t").value.trim()};
+      if(r) Object.assign(r, datos);
+      else (INV.refugios ||= []).push({id:"ref_" + (norm(nombre).replace(/[^a-z0-9]/g, "").slice(0, 20) || "refugio") + "_" + Date.now().toString(36), ...datos});
+      evento(r ? "refugio_editado" : "refugio_creado", {nombre});
+      anotarMesa(`Refugio: ${r ? "edita" : "agrega"} ${nombre}`);
+      guardarInv(); cerrarSheet(); renderInv(); };
   });
 }
 

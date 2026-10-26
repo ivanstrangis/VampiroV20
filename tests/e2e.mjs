@@ -353,6 +353,72 @@ await prueba("si el Narrador todavía está escribiendo, tirar lo detiene solo y
   assert.ok(colgadas >= 1);
 });
 
+const crearConRefugios = async (nombre, refugio) => {
+  await page.evaluate(() => { abrirCreacion(); });
+  await page.evaluate(([nombre, refugio]) => {
+    Object.assign(W, {
+      nombre, concepto: "Tester nocturno", clan: "brujah",
+      atr: { fuerza: 4, destreza: 3, resistencia: 3, carisma: 3, manipulacion: 3, apariencia: 2, percepcion: 2, inteligencia: 2, astucia: 2 },
+      hab: { alerta: 3, atletismo: 3, pelea: 3, intimidacion: 2, callejeo: 2, armas_de_fuego: 3, conducir: 3, sigilo: 3, ocultismo: 3, investigacion: 2 },
+      dis: { celeridad: 1, potencia: 1, presencia: 1 }, tras: { recursos: 3, contactos: 2 }, vir: { conciencia: 4, autocontrol: 3, coraje: 3 },
+      grat: { "fuerza_voluntad:": 7, "humanidad:": 2, "habilidad:pelea": 1, "trasfondo:recursos": 1, "trasfondo:contactos": 1 },
+      sangre: 6, refugio, equipo: "Navaja\nCelular", dinero: 5000, step: 9 });
+    renderWz();
+  }, [nombre, refugio]);
+  assert.equal(await page.evaluate(() => primerPasoInvalido()), -1, "el personaje de prueba no pasa la validación");
+  await page.click("#wz-crear");
+  await page.waitForFunction(n => F && F.nombre === n, nombre, { timeout: 15000 });
+};
+await prueba("creación: un personaje puede tener cero, uno o varios refugios", async () => {
+  await crearConRefugios("Sin Refugio", "");
+  assert.equal(await page.evaluate(() => INV.refugios.length), 0);
+  assert.equal(await page.evaluate(() => CON.hechos.length), 0, "no debería anotar un refugio que no existe");
+  await crearConRefugios("Dos Refugios", "Un PH en Boedo\n  \nUn depósito en Barracas");
+  assert.deepEqual(await page.evaluate(() => INV.refugios.map(r => r.nombre)), ["Un PH en Boedo", "Un depósito en Barracas"]);
+  assert.equal(await page.evaluate(() => new Set(INV.refugios.map(r => r.id)).size), 2, "los refugios necesitan ids distintos");
+});
+await prueba("modo mesa: agregar, editar, anotar y borrar refugios desde el inventario", async () => {
+  await page.click('#tabs [data-t="inv"]');
+  await page.waitForSelector("#ref-nuevo");
+  await page.click("#ref-nuevo");
+  await page.fill("#rf-n", "Una casa en San Telmo");
+  await page.fill("#rf-d", "Planta baja, dos puertas");
+  await page.fill("#rf-t", "La vecina sospecha.\nHay un túnel al sótano.");
+  await foto("13-refugio-editor");
+  await page.click("#rf-ok");
+  await page.waitForFunction(() => INV.refugios.length === 3);
+  assert.match(await page.textContent("#s-inv"), /Una casa en San Telmo/);
+  assert.match(await page.textContent("#s-inv"), /Hay un túnel al sótano/);
+  await foto("14-refugios-inventario");
+  // editar el primero y guardar un objeto adentro
+  await page.click('[data-ref]');
+  await page.fill("#rf-n", "Un PH en Boedo (principal)");
+  await page.click("#rf-ok");
+  await page.waitForFunction(() => INV.refugios[0].nombre === "Un PH en Boedo (principal)");
+  await page.evaluate(() => { INV.items.find(o => o.nombre === "Navaja").lugar = INV.refugios[0].id; renderInv(); });
+  // nombre repetido: no deja
+  await page.click("#ref-nuevo"); await page.fill("#rf-n", "un depósito en barracas"); await page.click("#rf-ok");
+  assert.match(await page.textContent("#rf-err"), /Ya tenés un refugio/);
+  await page.click("#rf-x");
+  // borrar el primero: pide confirmar y el objeto pasa a Encima
+  await page.click('[data-ref]');
+  await page.click("#rf-del");
+  assert.equal(await page.evaluate(() => INV.refugios.length), 3, "borró sin confirmar");
+  await page.click("#rf-del");
+  await page.waitForFunction(() => INV.refugios.length === 2);
+  assert.equal(await page.evaluate(() => INV.items.find(o => o.nombre === "Navaja").lugar), "encima");
+  // sigue ahí después de recargar
+  await page.reload(); await esperarListo();
+  assert.deepEqual(await page.evaluate(() => INV.refugios.map(r => r.nombre)), ["Un depósito en Barracas", "Una casa en San Telmo"]);
+  assert.equal(await page.evaluate(() => INV.refugios[1].notas), "La vecina sospecha.\nHay un túnel al sótano.");
+  // y se pueden borrar todos
+  await page.click('#tabs [data-t="inv"]');
+  for (let i = 0; i < 2; i++) { await page.click('[data-ref]'); await page.click("#rf-del"); await page.click("#rf-del"); await page.waitForFunction(n => INV.refugios.length === n, 1 - i); }
+  assert.match(await page.textContent("#s-inv"), /No tiene refugios/);
+  await page.evaluate(id => cambiarPersonaje(id), idPrincipal);
+  await page.waitForFunction(() => F && F.nombre === "Test Vampiro", null, { timeout: 15000 });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
