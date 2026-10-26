@@ -264,6 +264,7 @@ await prueba("el Narrador usa una herramienta y sigue narrando (protocolo OpenAI
   assert.ok(cuerpos[0].tools.some(t => t.function.name === "anotar"));
   assert.match(cuerpos[0].messages.at(-1).content, /Recordatorio del Director: narrá solo lo que el jugador/);
   assert.match(cuerpos[0].messages[0].content, /FIDELIDAD A LA ACCIÓN/);
+  assert.match(cuerpos[0].messages[0].content, /RELOJ: toda acción gasta tiempo/);
   const ultimo = cuerpos[1].messages.at(-1);
   assert.equal(ultimo.role, "tool"); assert.equal(ultimo.tool_call_id, "c1"); assert.equal(ultimo.content, "ok");
   assert.ok(cuerpos[1].messages.some(m => m.role === "assistant" && m.tool_calls?.[0]?.function?.arguments === '{"texto":"La puerta tiene una marca roja","tema":"pistas"}'));
