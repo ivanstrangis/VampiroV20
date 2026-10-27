@@ -1030,7 +1030,7 @@ function reservaTirada(p){
     if(r === "autocontrol") reserva = Math.min(reserva, F.sangre);
     titulo = lab(r);
   } else {
-    const bono = bonoFisico(norm(p.atributo));
+    const bono = p.sin_disciplina ? {dados:0, txt:""} : bonoFisico(norm(p.atributo));
     reserva = rasgo(p.atributo) + (p.habilidad ? rasgo(p.habilidad) : 0) + bono.dados + pen;
     titulo = lab(norm(p.atributo)) + (p.habilidad ? " + " + lab(norm(p.habilidad)) : "") + (bono.dados ? " + " + bono.txt : "");
   }
@@ -1104,11 +1104,16 @@ function pedidoCard(m){
   if(m.resuelto){ d.innerHTML = diceHTML(m.resultado, true); return d; }
   let info;
   try { info = reservaTirada(p); } catch(e){ info = {reserva:"?", titulo:p.titulo||"Tirada"}; }
-  const sinFV = !!p.sin_fv;
+  const sinFV = !!p.sin_fv, dc = !p.rasgo && !p.sin_disciplina ? bonoFisico(norm(p.atributo || "")) : null;
   d.innerHTML = `<div class="dice"><h3>${esc(p.motivo || info.titulo)}</h3><div class="sub">${esc(info.titulo)} · ${info.reserva} dados · dificultad ${p.dificultad}${p.arma?" · usa "+esc(p.arma):""}</div>
     <div class="droll">${Array.from({length:Math.min(Number(info.reserva)||0,20)},()=>'<div class="d10">?</div>').join("")}</div><div class="res"></div>
-    <div class="dice-actions">${sinFV?'<span class="chk">Sin Fuerza de Voluntad</span>':`<label class="chk"><input type="checkbox" id="fv-${m.n}"> Gastar 1 FV (+1 éxito)</label>`}
+    <div class="dice-actions">${dc && dc.dados ? `<label class="chk"><input type="checkbox" id="dc-${m.n}" checked> Sumar ${esc(dc.txt)}</label>` : ""}${sinFV?'<span class="chk">Sin Fuerza de Voluntad</span>':`<label class="chk"><input type="checkbox" id="fv-${m.n}"> Gastar 1 FV (+1 éxito)</label>`}
     <button class="btn" type="button">Tirar ${info.reserva} dados</button></div></div>`;
+  const chkD = d.querySelector(`#dc-${m.n}`);
+  if(chkD) chkD.onchange = () => { let i2; try { i2 = reservaTirada({...p, sin_disciplina: !chkD.checked}); } catch(_){ return; }
+    d.querySelector(".sub").textContent = `${i2.titulo} · ${i2.reserva} dados · dificultad ${p.dificultad}${p.arma ? " · usa " + p.arma : ""}`;
+    d.querySelector(".droll").innerHTML = Array.from({length:Math.min(Number(i2.reserva) || 0, 20)}, () => '<div class="d10">?</div>').join("");
+    d.querySelector("button").textContent = `Tirar ${i2.reserva} dados`; };
   d.querySelector("button").onclick = () => resolverPedido(m, d);
   return d;
 }
@@ -1123,7 +1128,7 @@ async function resolverPedido(m, el){
   const usarFV = !!el.querySelector(`#fv-${m.n}`)?.checked;
   let info, arma = null;
   try {
-    info = reservaTirada(p);
+    info = reservaTirada({...p, sin_disciplina: el.querySelector(`#dc-${m.n}`)?.checked === false});
     if(p.arma){
       arma = exigirObjeto(p.arma);
       validarDisparo(arma, Math.max(1, Number(p.balas)||1));
@@ -3234,6 +3239,12 @@ function bonoFisico(atr){
   if(atr === "fuerza"){ const n = nivelDisc("potencia"); return JT.potAuto ? {dados:0, auto:n, txt:n ? `Potencia ${n} éxito${n>1?"s":""} aut.` : ""} : {dados:n, auto:0, txt:n ? `Potencia ${n}` : ""}; }
   return {dados:0, auto:0, txt:""};
 }
+/* Las Disciplinas que suman dados a una tirada (Celeridad a Destreza, Potencia a Fuerza, Fortaleza a la absorción) se pueden dejar afuera con un botón. */
+const bonoSi = (atr, usar) => usar === false ? {dados:0, auto:0, txt:""} : bonoFisico(atr);
+function discDe(atr){
+  const b = bonoFisico(atr), n = b.dados || b.auto;
+  return n ? {n, nombre: atr === "destreza" ? "Celeridad" : "Potencia", auto: !!b.auto} : null;
+}
 const J = {esp:null, atajo:null, a:"destreza", b:"armas_de_fuego", mod:0, dif:"6", fv:false, pen:true, n:5, difN:"6", danoN:1, danoT:"L", abs:false, pagar:true, sangreN:1, fvN:1, motivo:""};
 const ATAJOS = [
   {id:"iniciativa", t:"Iniciativa"},
@@ -3243,22 +3254,24 @@ const ATAJOS = [
   {id:"frenesi", t:"Autocontrol", a:"autocontrol", b:"", dif:"6"},
   {id:"rotschreck", t:"Coraje", a:"coraje", b:"", dif:"6"},
   {id:"degeneracion", t:"Conciencia", a:"conciencia", b:"", dif:"8"}];
+// Si el personaje cambia y la tirada a medida quedó con un Rasgo que el nuevo no tiene (una Disciplina, por ejemplo), vale 0 en vez de romper la pantalla.
+const rasgoJ = k => { try { return rasgo(k); } catch(_){ return 0; } };
 const UNICOS = ["conciencia","autocontrol","coraje","humanidad","fuerza_de_voluntad"];
 function reservaJ(){
   if(J.esp === "iniciativa"){ const pen = penalizacion() || 0;
     return {n:1, titulo:`Iniciativa: 1d10 + Destreza ${rasgo("destreza")} + Astucia ${rasgo("astucia")}${pen ? " "+pen+" por heridas" : ""}`, pen, unico:true}; }
-  if(J.esp === "absorcion"){ const fort = (F.disciplinas||{}).fortaleza || 0;
-    return {n:rasgo("resistencia") + fort, titulo:`Absorción: Resistencia ${rasgo("resistencia")}${fort ? " + Fortaleza "+fort : ""}, dif. 6, los 1 no restan`, pen:0, unico:true}; }
+  if(J.esp === "absorcion"){ const fort = (F.disciplinas||{}).fortaleza || 0, suma = fort && J.sumaDisc !== false;
+    return {n:rasgo("resistencia") + (suma ? fort : 0), titulo:`Absorción: Resistencia ${rasgo("resistencia")}${suma ? " + Fortaleza "+fort : ""}, dif. 6, los 1 no restan`, pen:0, unico:true, disc: fort ? {nombre:"Fortaleza", n:fort} : null}; }
   const a = J.a, b = J.b;
   if(!a && !b) return {n:0, titulo:"Elegí al menos un Rasgo", pen:0, unico:false};
   const unico = UNICOS.includes(a) && !b;
-  let n = (a ? rasgo(a) : 0) + (b ? rasgo(b) : 0);
+  let n = (a ? rasgoJ(a) : 0) + (b ? rasgoJ(b) : 0);
   if(a === "conciencia" || a === "autocontrol" || a === "coraje") n = Math.min(n, F.humanidad);
   if(a === "autocontrol" && !b) n = Math.min(n, F.sangre);
   const pen = (!unico && J.pen) ? (penalizacion() || 0) : 0;
-  const bono = bonoFisico(a);
+  const bono = bonoSi(a, J.sumaDisc);
   n = Math.max(0, n + bono.dados + pen + (Number(J.mod)||0));
-  return {n, titulo:[a && lab(a), b && lab(b)].filter(Boolean).join(" + ") + (bono.txt ? " + " + bono.txt : ""), pen, unico, auto:bono.auto, bono};
+  return {n, titulo:[a && lab(a), b && lab(b)].filter(Boolean).join(" + ") + (bono.txt ? " + " + bono.txt : ""), pen, unico, auto:bono.auto, bono, disc: discDe(a)};
 }
 function selectA(sel = J.a){
   const o = (k, v) => `<option value="${k}" ${k===sel?"selected":""}>${lab(k)} (${v})</option>`;
@@ -3385,7 +3398,7 @@ function tituloTirada(){
   const x = [...ATAJOS, ...(MUNDO.atajos_propios||[])].find(a => a.id === J.atajo);
   if(J.esp === "iniciativa") return {t:"Iniciativa", s:`1d10 + Destreza ${rasgo("destreza")} + Astucia ${rasgo("astucia")}${penalizacion() ? " "+penalizacion()+" heridas" : ""}`};
   if(J.esp === "absorcion"){ const f = (F.disciplinas||{}).fortaleza || 0; return {t:"Absorción", s:`Resistencia ${rasgo("resistencia")}${f ? " + Fortaleza "+f : ""} · los 1 no restan`}; }
-  const partes = [J.a && `${lab(J.a)} ${rasgo(J.a)}`, J.b && `${lab(J.b)} ${rasgo(J.b)}`].filter(Boolean);
+  const partes = [J.a && `${lab(J.a)} ${rasgoJ(J.a)}`, J.b && `${lab(J.b)} ${rasgoJ(J.b)}`].filter(Boolean);
   const r = reservaJ(); const extra = [r.bono?.txt ? `+ ${r.bono.txt}` : "", r.pen ? `${r.pen} heridas` : "", J.mod ? `${J.mod>0?"+":""}${J.mod} extra` : ""].filter(Boolean).join(" ");
   return {t: x ? x.t : (partes.length ? partes.map(p => p.replace(/ \d+$/,"")).join(" + ") : "Elegí qué tirar"), s: partes.join(" + ") + (extra ? " " + extra : "")};
 }
@@ -3425,7 +3438,7 @@ function renderJuego(){
       <div class="t-top"><div class="t-txt"><b class="t-tit">${esc(tt.t)}</b><span class="t-sub">${esc(tt.s)}</span></div>
         <span class="t-n num">${ini ? `+${rasgo("destreza")+rasgo("astucia")+(penalizacion()||0)}` : r.n}<small>${ini ? "" : r.n===1 ? " dado" : " dados"}</small></span></div>
       ${ini ? "" : `<div class="t-ctl"><div class="dif"><span class="pen">Dificultad</span><div class="stepper chico"><button type="button" id="j-difm" aria-label="Bajar dificultad" ${J.dif===""?"disabled":""}>−</button><b class="num">${difTxt}</b><button type="button" id="j-difp" aria-label="Subir dificultad" ${J.dif==="10"?"disabled":""}>+</button></div></div>
-        <span style="display:flex;gap:8px">${!J.esp && espTirada() ? `<button type="button" class="tog esp" id="j-espec" aria-pressed="${!!J.espec}" title="Cada 10 vale dos éxitos">Esp. ${esc(espTirada())}</button>` : ""}<button type="button" class="tog" id="j-fv" aria-pressed="${J.fv}" ${J.esp==="absorcion"?"disabled":""}>+1 FV</button></span></div>`}
+        <span style="display:flex;gap:8px">${!J.esp && espTirada() ? `<button type="button" class="tog esp" id="j-espec" aria-pressed="${!!J.espec}" title="Cada 10 vale dos éxitos">Esp. ${esc(espTirada())}</button>` : ""}${r.disc ? `<button type="button" class="tog" id="j-disc" aria-pressed="${J.sumaDisc !== false}" title="Sumar o no los dados de la Disciplina">${esc(r.disc.nombre)} +${r.disc.n}</button>` : ""}<button type="button" class="tog" id="j-fv" aria-pressed="${J.fv}" ${J.esp==="absorcion"?"disabled":""}>+1 FV</button></span></div>`}
       <button class="btn grande" type="button" id="j-tirar" ${r.n<1?"disabled":""}>${textoBoton(r)}</button>
       <div id="j-out">${J.out||""}</div>
     </div>
@@ -3453,12 +3466,13 @@ function avisoJuego(t){ const s = document.createElement("div"); s.className = "
 const motivoJ = def => (J.motivo || "").trim() || def;
 function enlazarJuego(){
   const v = id => $("#"+id);
-  const soltar = () => { J.esp = null; J.atajo = null; };
+  const soltar = () => { J.esp = null; J.atajo = null; J.sumaDisc = true; };
   const re = () => renderJuegoConservando();
   document.querySelectorAll("[data-atajo]").forEach(b => b.onclick = () => atajo(b.dataset.atajo));
   v("j-atajo-mas").onclick = abrirAtajos;
   if(v("j-difm")){ v("j-difm").onclick = () => { J.dif = DIFS[Math.max(0, DIFS.indexOf(J.dif)-1)]; re(); };
     v("j-difp").onclick = () => { J.dif = DIFS[Math.min(DIFS.length-1, DIFS.indexOf(J.dif)+1)]; re(); };
+    if(v("j-disc")) v("j-disc").onclick = () => { J.sumaDisc = J.sumaDisc === false; re(); };
     v("j-fv").onclick = () => { J.fv = !J.fv; v("j-fv").setAttribute("aria-pressed", J.fv); };
     if(v("j-espec")) v("j-espec").onclick = () => { J.espec = !J.espec; v("j-espec").setAttribute("aria-pressed", J.espec); }; }
   v("j-tirar").onclick = tirarRasgos;
@@ -3474,7 +3488,7 @@ function enlazarJuego(){
 
 function atajo(id){
   const x = [...ATAJOS, ...(MUNDO.atajos_propios||[])].find(a => a.id === id); if(!x) return;
-  J.atajo = id; J.mod = x.mod || 0; J.fv = false; J.esp = null;
+  J.atajo = id; J.mod = x.mod || 0; J.fv = false; J.esp = null; J.sumaDisc = true;
   if(id === "iniciativa"){ J.esp = "iniciativa"; J.a = "destreza"; J.b = ""; J.dif = ""; }
   else if(id === "absorcion"){ J.esp = "absorcion"; J.a = "resistencia"; J.b = (F.disciplinas||{}).fortaleza ? "fortaleza" : ""; J.dif = "6"; }
   else { J.a = x.a || ""; J.b = x.b || ""; J.dif = x.dif ?? "6"; }
@@ -3536,8 +3550,9 @@ async function tirarRasgos(){
   const fvGastada = auto > (r.auto||0);
   if(fvGastada){ guardarFicha(); refrescarCabecera(); flash("m-fv"); }
   anotarMesa(linea); J.out = out.innerHTML;
-  $("#j-tirar").disabled = false; J.fv = false; const c = $("#j-fv"); if(c) c.setAttribute("aria-pressed", "false");
+  $("#j-tirar").disabled = false; J.fv = false; J.sumaDisc = true; const c = $("#j-fv"); if(c) c.setAttribute("aria-pressed", "false");
   if(fvGastada) mostrarDeshacer("Tirada · −1 FV", ft);
+  renderJuegoConservando();
 }
 async function tirarIniciativa(){
   const out = $("#j-out"); out.innerHTML = '<div class="droll"></div><div class="res"></div>';
@@ -3550,7 +3565,7 @@ async function tirarIniciativa(){
   anotarMesa(rr.textContent); J.out = out.innerHTML;
 }
 async function tirarAbsorcion(){
-  const res = rasgo("resistencia"), fort = (F.disciplinas||{}).fortaleza || 0, n = res + fort;
+  const res = rasgo("resistencia"), fort = J.sumaDisc === false ? 0 : (F.disciplinas||{}).fortaleza || 0, n = res + fort;
   const out = $("#j-out"); out.innerHTML = '<div class="droll"></div><div class="res"></div>';
   await animarDados(out.querySelector(".droll"), n);
   const dFort = Array.from({length:fort}, d10), dados = [...Array.from({length:res}, d10), ...dFort].sort((a,b) => b - a), ex = dados.filter(d => d >= 6).length;
@@ -3558,7 +3573,7 @@ async function tirarAbsorcion(){
   const rr = out.querySelector(".res"); rr.className = "res good";
   rr.textContent = `Absorbe ${ex} nivel(es) · Resistencia ${res}${fort ? " + Fortaleza "+fort : ""}, dif. 6 (los 1 no restan). Solo Fortaleza absorbe agravado: ${dFort.filter(d => d >= 6).length}.`;
   evento("tirada_mesa", {titulo:"absorción", dados, exitos:ex});
-  anotarMesa(rr.textContent); J.out = out.innerHTML;
+  anotarMesa(rr.textContent); J.out = out.innerHTML; J.sumaDisc = true; renderJuegoConservando();
 }
 
 /* =====================================================================
@@ -4051,12 +4066,13 @@ function armasJuegoHTML(){
   return `<section class="jblk"><h2 class="jlbl">Armas</h2><div class="tcard armas">${armas.map(o => {
     const s = JA[o.id] ||= {dif:"6", modo:"simple", fv:false, out:"", dano:null};
     const espA = espArma(o);
-    const fvBtn = (espA ? `<button type="button" class="tog esp" data-jaesp="${o.id}" aria-pressed="${!!s.esp}" title="Cada 10 vale dos éxitos">Esp. ${esc(espA)}</button>` : "") + `<button type="button" class="tog" data-jafv="${o.id}" aria-pressed="${s.fv}">+1 FV</button>`;
+    const dc = discDe("destreza");
+    const fvBtn = (dc ? `<button type="button" class="tog" data-jacel="${o.id}" aria-pressed="${s.sumaCel !== false}" title="Sumar o no los dados de Celeridad">Celeridad +${dc.n}</button>` : "") + (espA ? `<button type="button" class="tog esp" data-jaesp="${o.id}" aria-pressed="${!!s.esp}" title="Cada 10 vale dos éxitos">Esp. ${esc(espA)}</button>` : "") + `<button type="button" class="tog" data-jafv="${o.id}" aria-pressed="${s.fv}">+1 FV</button>`;
     if(o.tipo === "arma_fuego"){
       normArma(o);
       const reps = cargadoresDe(o.id).filter(c => (c.lugar||ENCIMA) === ENCIMA && c.balas > 0);
       const rev = o.mecanismo === "revolver", balas = rev ? o.tambor : o.recamara + o.cargador, cap = rev ? o.capacidad_tambor : o.capacidad_cargador + 1;
-      const pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("armas_de_fuego") + pen + (s.modo === "rafaga" ? 2 : s.modo === "auto" ? 10 : 0));
+      const pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("armas_de_fuego") + pen + (s.modo === "rafaga" ? 2 : s.modo === "auto" ? 10 : 0));
       return `<div class="arma">
         <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b>
           <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
@@ -4065,16 +4081,16 @@ function armasJuegoHTML(){
         <div class="a-ctl"><select class="mini" aria-label="Dificultad del disparo" data-ja="${o.id}:dif">${[["4","Dif. 4 · quemarropa"],["5","Dif. 5"],["6","Dif. 6 · corto"],["7","Dif. 7"],["8","Dif. 8 · largo"],["9","Dif. 9"],["10","Dif. 10"]].map(([v,t]) => `<option value="${v}" ${s.dif===v?"selected":""}>${t}</option>`).join("")}</select>
           ${o.rafaga ? `<select class="mini" aria-label="Modo de disparo" data-ja="${o.id}:modo"><option value="simple" ${s.modo==="simple"?"selected":""}>Simple</option><option value="rafaga" ${s.modo==="rafaga"?"selected":""}>Ráfaga</option><option value="auto" ${s.modo==="auto"?"selected":""}>Automático</option></select>` : ""}${fvBtn}</div>
         <div class="par"><button class="btn ghost" type="button" data-jrec="${o.id}" ${reps.length ? "" : "disabled"}>Recargar</button><button class="btn" type="button" data-jdisp="${o.id}" ${balas ? "" : "disabled"}>Disparar</button></div>
-        <div class="jout">${s.out}</div></div>`;
+        <div class="jout">${s.out}${controlesDano(o, s)}</div></div>`;
     }
-    const bf = bonoFisico("fuerza"), pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("pelea_con_armas") + pen), dd = rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + bonoEsp(o) + (bf.auto ? ` +${bf.auto} aut.` : "");
+    const bf = bonoFisico("fuerza"), pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("pelea_con_armas") + pen), dd = rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + bonoEsp(o) + (bf.auto ? ` +${bf.auto} aut.` : "");
     return `<div class="arma">
       <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[tipoEsp(o)||o.tipo_dano||"L"]}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
         <span class="a-info">${pool} dados<br>daño ${dd}</span></div>
       ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
       <div class="a-ctl"><select class="mini" aria-label="Dificultad del ataque" data-ja="${o.id}:dif">${[4,5,6,7,8,9,10].map(v => `<option value="${v}" ${s.dif===String(v)?"selected":""}>Dif. ${v}</option>`).join("")}</select>${fvBtn}</div>
       <button class="btn" type="button" data-jatk="${o.id}" style="width:100%">Atacar</button>
-      <div class="jout">${s.out}</div></div>`;
+      <div class="jout">${s.out}${controlesDano(o, s)}</div></div>`;
   }).join("")}</div></section>`;
 }
 const reqAviso = o => !o.requisito || cumple(o.requisito) ? "" : `<div class="a-ctl"><span class="a-sub" style="color:var(--bad)">Pide ${esc(etiquetaCond(o.requisito))}.</span><button type="button" class="tog" data-forzar="${esc(o.id)}" aria-pressed="${!!o.forzada}">Empuñarla igual</button></div>`;
@@ -4083,6 +4099,9 @@ function enlazarArmas(){
   document.querySelectorAll("[data-forzar]").forEach(b => b.onclick = () => { const o = INV.items.find(x => x.id === b.dataset.forzar); o.forzada = !o.forzada;
     anotarMesa(`${o.nombre}: ${o.forzada ? "la empuña aunque no cumpla el requisito" : "vuelve a pedir el requisito"}`); guardarInv(); renderJuegoConservando(); });
   document.querySelectorAll("[data-ja]").forEach(e => e.onchange = () => { const [id, k] = e.dataset.ja.split(":"); JA[id][k] = e.value; if(k === "modo") renderJuegoConservando(); });
+  document.querySelectorAll("[data-jacel]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jacel]; s.sumaCel = s.sumaCel === false; renderJuegoConservando(); });
+  document.querySelectorAll("[data-jdx]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdx]; s.sumaEx = s.sumaEx === false; renderJuegoConservando(); });
+  document.querySelectorAll("[data-jdp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdp]; s.sumaPot = s.sumaPot === false; renderJuegoConservando(); });
   document.querySelectorAll("[data-jafv]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jafv]; s.fv = !s.fv; b.setAttribute("aria-pressed", s.fv); });
   document.querySelectorAll("[data-jaesp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jaesp]; s.esp = !s.esp; b.setAttribute("aria-pressed", s.esp); });
   document.querySelectorAll("[data-jdisp]").forEach(b => b.onclick = () => disparar(b.dataset.jdisp));
@@ -4091,6 +4110,9 @@ function enlazarArmas(){
     guardarInv(); anotarMesa(`Recarga ${o.nombre}: ${r.estado}`); JA[o.id].out = `<p class="pen">Recargada: ${esc(r.estado)}.</p>`; mostrarDeshacer(`Recarga ${o.nombre}`, s); renderJuegoConservando(); }));
   document.querySelectorAll("[data-jdano]").forEach(b => b.onclick = () => tirarDanoArma(b.dataset.jdano));
 }
+const dadosDano = s => Math.max(0, (s.dano || 0) - (s.sumaEx === false ? (s.masEx || 0) : 0) - (s.sumaPot === false ? (s.potDados || 0) : 0));
+const controlesDano = (o, s) => !s.dano ? "" : `<div class="a-ctl" style="margin-top:6px">${s.potDados || s.danoAuto ? `<button type="button" class="tog" data-jdp="${o.id}" aria-pressed="${s.sumaPot !== false}" title="Sumar o no la Potencia al daño">Potencia ${s.potDados ? "+" + s.potDados + " dado" + (s.potDados > 1 ? "s" : "") : s.danoAuto + " éxito" + (s.danoAuto > 1 ? "s aut." : " aut.")}</button>` : ""}${s.masEx ? `<button type="button" class="tog" data-jdx="${o.id}" aria-pressed="${s.sumaEx !== false}" title="Sumar o no los éxitos extra de la tirada de ataque">Éxitos extra +${s.masEx}</button>` : ""}</div>
+  <button class="btn ghost" type="button" data-jdano="${o.id}" style="margin-top:6px">Tirar daño (${dadosDano(s)} dado${dadosDano(s) === 1 ? "" : "s"})</button>`;
 function resultadoAtaque(o, t, extra){
   const dados = carasDados(t.dados, t.dificultad, anuladosT(t), t.especialidad) + (t.automaticos ? '<div class="d10 auto">FV</div>' : "");
   const s = JA[o.id], acierto = t.resultado === "exito";
@@ -4099,8 +4121,9 @@ function resultadoAtaque(o, t, extra){
   const nd = acierto ? base + masEx : 0;
   const desglose = acierto ? ` (base ${base}${cc ? ` = Fuerza ${rasgo("fuerza")}${bf.dados ? " + Potencia "+bf.dados : ""} + ${o.dano_fuerza||0} del arma${bonoEsp(o) ? " + "+bonoEsp(o)+" especial" : ""}` : `${bonoEsp(o) ? " + "+bonoEsp(o)+" especial" : ""} del arma`}${masEx ? ` + ${masEx} por éxito${masEx>1?"s":""} extra` : ""})` : "";
   s.dano = acierto ? nd : null; s.danoAuto = acierto && cc ? bf.auto : 0; s.danoExtra = acierto ? extraTipado(o) : {};
+  s.masEx = acierto ? masEx : 0; s.potDados = acierto && cc ? bf.dados : 0; s.sumaEx = true; s.sumaPot = true;
   s.out = `<div class="droll">${dados}</div><div class="res ${acierto?"good":"bad"}">${textoTirada(t)}${acierto ? ` · ${nd} dados de daño${desglose}${s.danoAuto ? ` + ${s.danoAuto} éxito${s.danoAuto>1?"s":""} de Potencia` : ""}` : ""}</div>${extra ? `<p class="pen" style="margin:2px 0 6px">${extra}</p>` : ""}
-    ${acierto ? `<button class="btn ghost" type="button" data-jdano="${o.id}" style="margin-top:6px">Tirar daño (${nd} dados)</button>` : ""}`;
+`;
 }
 async function disparar(id){
   const o = INV.items.find(x => x.id === id), s = JA[id], ft = foto();
@@ -4113,7 +4136,7 @@ async function disparar(id){
     validarDisparo(o, balas);
     if(modo !== "simple" && o.mecanismo !== "semiautomatica") throw new ReglaError("La ráfaga y el automático necesitan un arma semiautomática.");
     let auto = 0; if(s.fv){ gastarFV("éxito automático (disparo)"); auto = 1; }
-    const pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("armas_de_fuego") + pen + (modo === "rafaga" ? 2 : modo === "auto" ? 10 : 0));
+    const pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("armas_de_fuego") + pen + (modo === "rafaga" ? 2 : modo === "auto" ? 10 : 0)); s.sumaCel = true;
     const dif = Math.min(10, Number(s.dif) + (modo === "rafaga" ? 1 : modo === "auto" ? 2 : 0));
     const notas = dispararArma(o, balas);
     const out = document.querySelector(`[data-jdisp="${id}"]`)?.closest(".arma")?.querySelector(".jout");
@@ -4133,7 +4156,7 @@ async function atacarCC(id){
     activo(); const pen = penalizacion(); if(pen === null) throw new ReglaError(`${F.nombre} está Incapacitado y no puede atacar.`);
     exigirEmpunable(o);
     let auto = 0; if(s.fv){ gastarFV("éxito automático (ataque)"); auto = 1; }
-    const pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("pelea_con_armas") + pen), dif = Number(s.dif);
+    const pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("pelea_con_armas") + pen), dif = Number(s.dif); s.sumaCel = true;
     const out = document.querySelector(`[data-jatk="${id}"]`)?.closest(".arma")?.querySelector(".jout");
     if(out){ out.innerHTML = '<div class="droll"></div>'; await animarDados(out.querySelector(".droll"), pool); }
     const t = tirar(pool, dif, {auto, esp: !!(s.esp && espArma(o))});
@@ -4146,17 +4169,18 @@ async function atacarCC(id){
 }
 async function tirarDanoArma(id){
   const o = INV.items.find(x => x.id === id), s = JA[id]; if(!s?.dano) return;
-  const extra = s.danoExtra || {}, nExtra = Object.values(extra).reduce((a, b) => a + b, 0), nBase = Math.max(0, s.dano - nExtra);
+  const extra = s.danoExtra || {}, nExtra = Object.values(extra).reduce((a, b) => a + b, 0), nBase = Math.max(0, dadosDano(s) - nExtra), autoPot = s.sumaPot === false ? 0 : (s.danoAuto || 0);
+  const sinSumar = [s.sumaEx === false && s.masEx ? `sin sumar ${s.masEx} éxito${s.masEx > 1 ? "s" : ""} extra` : "", s.sumaPot === false && (s.potDados || s.danoAuto) ? "sin sumar Potencia" : ""].filter(Boolean).join(", ");
   const tipoBase = tipoEsp(o) ? TIPO_DANO[tipoEsp(o)] : o.tipo === "arma_fuego" ? "letal (contundente contra vampiros, salvo a la cabeza)" : TIPO_DANO[o.tipo_dano || "L"];
   const grupos = [];
-  if(nBase > 0 || s.danoAuto) grupos.push({t:tirar(nBase, 6, {unosRestan:false, auto:s.danoAuto || 0}), tipo:tipoBase, pot:s.danoAuto || 0});
+  if(nBase > 0 || autoPot) grupos.push({t:tirar(nBase, 6, {unosRestan:false, auto:autoPot}), tipo:tipoBase, pot:autoPot});
   for(const [k, n] of Object.entries(extra)) if(n > 0) grupos.push({t:tirar(n, 6, {unosRestan:false}), tipo:TIPO_DANO[k] + (grupos.length ? " (dados extra)" : ""), pot:0});
-  s.out = s.out.replace(/<button[^>]*data-jdano[^>]*>[\s\S]*?<\/button>/, "");
   s.out += grupos.map(g => `<div class="droll">${g.t.dados.map(v => caraDado(v, 6, false)).join("")}${Array.from({length:g.pot}, () => '<div class="d10 auto">POT</div>').join("")}</div><div class="res good">${g.t.neto} nivel${g.t.neto===1?"":"es"} de daño ${g.tipo}</div>`).join("")
+    + (sinSumar ? `<p class="pen" style="margin:2px 0 6px">${esc(sinSumar)}</p>` : "")
     + (textoEsp(o) ? `<p class="pen" style="margin:2px 0 6px">✦ ${esc(textoEsp(o))}</p>` : "");
-  s.dano = null; s.danoAuto = 0; s.danoExtra = {};
+  s.dano = null; s.danoAuto = 0; s.danoExtra = {}; s.masEx = 0; s.potDados = 0;
   anotarMesa(`Daño con ${o.nombre}: ` + grupos.map(g => `[${g.t.dados.join(", ")}]${g.t.automaticos ? ` + ${g.t.automaticos} aut. (Potencia)` : ""} → ${g.t.neto} nivel(es) ${g.tipo}`).join(" · ")
-    + (textoEsp(o) ? " · arma especial: " + textoEsp(o) : ""));
+    + (sinSumar ? " · " + sinSumar : "") + (textoEsp(o) ? " · arma especial: " + textoEsp(o) : ""));
   renderJuegoConservando();
 }
 

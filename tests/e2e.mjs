@@ -34,7 +34,7 @@ const prueba = async (nombre, fn) => {
 const ctx = await navegador.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, acceptDownloads: true, locale: "es-AR" });
 const page = await ctx.newPage();
 const errores = [];
-page.on("pageerror", e => errores.push("pageerror: " + e.message));
+page.on("pageerror", e => { errores.push("pageerror: " + e.message); if (process.env.DBG) console.log("PAGEERROR", e.message); });
 page.on("console", m => { if (m.type() === "error") errores.push("console: " + m.text()); });
 
 const esperarListo = () => page.waitForFunction(() => document.querySelector("#pj-nombre") && document.querySelector("#pj-nombre").textContent !== "Cargando…", null, { timeout: 15000 });
@@ -657,6 +657,47 @@ await prueba("tirar dados: el dado más alto se ve como 10, nunca como 0", async
   assert.doesNotMatch(await page.textContent("#dr-res"), /un 0|Dado 0/);
   await foto("22-dados-rapidos");
   await page.evaluate(() => cerrarSheet());
+});
+await prueba("Disciplinas que suman dados: botón para sumarlas o no (tirada, arma, absorción, Narrador) y para sumar o no los éxitos extra en el daño", async () => {
+  await page.evaluate(() => { window.__d0 = JSON.stringify(F.disciplinas || {}); F.disciplinas = {...(F.disciplinas || {}), celeridad: 2, fortaleza: 1}; JT.celAcc = 0; });
+  await page.evaluate(() => { mostrarPestana("juego"); J.esp = null; J.atajo = null; J.a = "destreza"; J.b = "atletismo"; J.sumaDisc = true; renderJuegoConservando(); });
+  const n = () => page.evaluate(() => reservaJ().n);
+  const con = await n();
+  assert.match(await page.textContent("#j-disc"), /Celeridad \+2/);
+  await page.click("#j-disc");
+  assert.equal(await n(), con - 2, "sin Celeridad la reserva baja 2");
+  assert.equal(await page.getAttribute("#j-disc", "aria-pressed"), "false");
+  await foto("23-boton-disciplina");
+  await page.click("#j-disc");
+  assert.equal(await n(), con);
+  // absorción con Fortaleza
+  await page.evaluate(() => atajo("absorcion"));
+  const abs = await n();
+  await page.click("#j-disc");
+  assert.equal(await n(), abs - 1, "sin Fortaleza baja 1");
+  await page.evaluate(() => { J.sumaDisc = true; J.esp = null; J.atajo = null; });
+  // tirada pedida por el Narrador
+  const pe = await page.evaluate(() => { const p = {atributo:"destreza", habilidad:"atletismo", dificultad:6}; return [reservaTirada(p).reserva, reservaTirada({...p, sin_disciplina:true}).reserva]; });
+  assert.equal(pe[0] - pe[1], 2);
+  // daño: elegir si se suman los éxitos extra y la Potencia
+  const r = await page.evaluate(() => {
+    const o = {id:"disc_t", nombre:"Maza", tipo:"arma_cc", dano_fuerza:1, tipo_dano:"C", lugar:"encima"};
+    INV.items = INV.items.filter(x => x.id !== o.id); INV.items.push(o); const s = JA[o.id] = {dif:"6", out:"", dano:null};
+    resultadoAtaque(o, tirar(8, 2, {auto:4}), "");
+    const todo = dadosDano(s), masEx = s.masEx, html = controlesDano(o, s);
+    s.sumaEx = false; const sin = dadosDano(s);
+    return {todo, masEx, sin, html};
+  });
+  assert.ok(r.masEx > 0, "la tirada de prueba debía tener éxitos extra");
+  assert.match(r.html, /data-jdx/); assert.equal(r.todo - r.sin, r.masEx);
+  const dados = await page.evaluate(() => { const s = JA["disc_t"]; const antes = (s.out.match(/class="d10/g) || []).length; tirarDanoArma("disc_t"); return (s.out.match(/class="d10/g) || []).length - antes; });
+  assert.equal(dados, r.sin, "tira solo los dados elegidos");
+  assert.match(await page.evaluate(() => JA["disc_t"].out), /sin sumar \d+ éxito/);
+  await page.evaluate(() => { INV.items = INV.items.filter(x => x.id !== "disc_t"); F.disciplinas = JSON.parse(window.__d0); });
+  // si el personaje cambia y la tirada a medida quedó con una Disciplina que el otro no tiene, la pantalla no se rompe
+  await page.evaluate(() => { J.a = "destreza"; J.b = "fortaleza"; });
+  assert.equal(await page.evaluate(() => { try { renderJuegoConservando(); return reservaJ().n >= 0; } catch(e){ return e.message; } }), true);
+  await page.evaluate(() => { J.b = "atletismo"; });
 });
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
