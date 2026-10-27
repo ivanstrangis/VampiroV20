@@ -3802,18 +3802,20 @@ function costoXP(tipo, actual, deClan){
   throw new ReglaError("Tipo de Rasgo desconocido.");
 }
 function abrirSumarXP(){
-  abrirSheet(`<h2>Sumar experiencia</h2>
-    <div class="field"><label for="xp-n">Puntos de experiencia</label><input id="xp-n" type="number" min="1" max="20" value="1"></div>
-    <div class="field"><label for="xp-m">Motivo</label><input id="xp-m" placeholder="Ej.: sesión del 22/10 (1 automática, 1 aprendizaje, 1 interpretación)"></div>
+  abrirSheet(`<h2>Sumar o restar experiencia</h2>
+    <div class="field"><label for="xp-n">Puntos de experiencia (negativo para restar)</label><input id="xp-n" type="number" min="-999" max="20" value="1"></div>
+    <div class="field"><label for="xp-m">Motivo</label><input id="xp-m" placeholder="Ej.: sesión del 22/10 · o «corrección: me equivoqué»"></div>
     <p class="err" id="xp-err"></p>
     <div class="row"><button class="btn ghost" type="button" id="xp-x">Cancelar</button><button class="btn" type="button" id="xp-ok">Sumar</button></div>`, () => {
     $("#xp-x").onclick = cerrarSheet;
-    $("#xp-ok").onclick = () => { const n = Math.round(Number($("#xp-n").value)||0), m = $("#xp-m").value.trim();
-      if(n < 1){ $("#xp-err").textContent = "Poné al menos 1 punto."; return; }
-      if(!m){ $("#xp-err").textContent = "Escribí el motivo (por ejemplo, la sesión)."; return; }
-      F.xp = (F.xp||0) + n; F.xp_total = (F.xp_total||0) + n;
-      evento("xp_otorgada", {n, motivo:m, disponible:F.xp}); anotarMesa(`+${n} PX (${m}) · disponible ${F.xp}`);
-      guardarFicha(); cerrarSheet(); renderFicha(); avisoJuego(`+${n} PX`); };
+    $("#xp-n").oninput = () => { $("#xp-ok").textContent = Math.round(Number($("#xp-n").value)||0) < 0 ? "Restar" : "Sumar"; };
+    $("#xp-ok").onclick = () => { const n = Math.min(20, Math.round(Number($("#xp-n").value)||0)), m = $("#xp-m").value.trim();
+      if(n === 0){ $("#xp-err").textContent = "Poné un número distinto de cero (negativo para restar)."; return; }
+      if(!m){ $("#xp-err").textContent = n < 0 ? "Escribí el motivo de la corrección." : "Escribí el motivo (por ejemplo, la sesión)."; return; }
+      if((F.xp||0) + n < 0){ $("#xp-err").textContent = `Solo hay ${F.xp||0} PX disponibles: no se pueden restar ${-n}.`; return; }
+      F.xp = (F.xp||0) + n; F.xp_total = Math.max(0, (F.xp_total||0) + n);
+      evento(n > 0 ? "xp_otorgada" : "xp_corregida", {n, motivo:m, disponible:F.xp}); anotarMesa(`${n > 0 ? "+" : "−"}${Math.abs(n)} PX (${m}) · disponible ${F.xp}`);
+      guardarFicha(); cerrarSheet(); renderFicha(); refrescarCabecera(); avisoJuego(`${n > 0 ? "+" : "−"}${Math.abs(n)} PX`); };
   });
 }
 function abrirGastarXP(){

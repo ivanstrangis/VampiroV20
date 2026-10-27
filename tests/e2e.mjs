@@ -825,6 +825,21 @@ await prueba("Salud y Sangre: la hoja queda abierta, marca lo nuevo y lo curado,
   assert.equal(await page.evaluate(() => F.sangre), 3);
   await page.evaluate(() => { F.salud = []; F.sangre = 6; guardarFicha(); });
 });
+await prueba("experiencia: se puede restar con un número negativo para corregir un error", async () => {
+  await page.evaluate(() => { F.xp = 5; F.xp_total = 9; abrirSumarXP(); });
+  await page.fill("#xp-n", "-2"); await page.fill("#xp-m", "corrección: me equivoqué");
+  assert.equal((await page.textContent("#xp-ok")).trim(), "Restar");
+  await page.click("#xp-ok");
+  assert.deepEqual(await page.evaluate(() => [F.xp, F.xp_total]), [3, 7]);
+  assert.match(await page.evaluate(() => MUNDO.registro_mesa[0].texto), /−2 PX/);
+  await page.evaluate(() => abrirSumarXP());
+  await page.fill("#xp-n", "-9"); await page.fill("#xp-m", "x"); await page.click("#xp-ok");
+  assert.match(await page.textContent("#xp-err"), /Solo hay 3 PX/);
+  assert.equal(await page.evaluate(() => F.xp), 3, "no deja pasar a negativo");
+  await page.fill("#xp-n", "0"); await page.click("#xp-ok");
+  assert.match(await page.textContent("#xp-err"), /distinto de cero/);
+  await page.evaluate(() => { cerrarSheet(); F.xp = 0; F.xp_total = 0; guardarFicha(); });
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));
