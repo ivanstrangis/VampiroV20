@@ -703,6 +703,41 @@ await prueba("Disciplinas que suman dados: botón para sumarlas o no (tirada, ar
   assert.equal(await page.evaluate(() => { try { renderJuegoConservando(); return reservaJ().n >= 0; } catch(e){ return e.message; } }), true);
   await page.evaluate(() => { J.b = "atletismo"; });
 });
+await prueba("menús: arrastrar hacia abajo estando arriba de todo cierra la hoja; a mitad de contenido solo desplaza", async () => {
+  const cdp = await ctx.newCDPSession(page);
+  const deslizar = async (x, y1, y2) => {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y1 }] });
+    const pasos = 12;
+    for (let i = 1; i <= pasos; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y1 + (y2 - y1) * i / pasos }] }); await page.waitForTimeout(16); }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(450);
+  };
+  const largo = () => page.evaluate(() => { abrirSheet("<h2>Prueba</h2>" + '<p class="pen">línea</p>'.repeat(90) + '<button id="pr-x" class="btn">x</button>', () => {}); });
+  const caja = () => page.evaluate(() => { const r = document.querySelector(".sheet").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 120, scroll: document.querySelector(".sheet").scrollTop }; });
+  // 1) arriba de todo: un gesto corto no cierra y la hoja vuelve a su lugar
+  await largo(); let c = await caja();
+  await deslizar(c.x, c.y, c.y + 50);
+  assert.equal(await page.$$eval(".sheet", e => e.length), 1, "un gesto corto no debía cerrarla");
+  assert.equal(await page.$eval(".sheet", e => e.style.transform), "", "la hoja debe volver a su lugar");
+  // 2) arriba de todo: arrastrar bastante la cierra
+  await deslizar(c.x, c.y, c.y + 260);
+  assert.equal(await page.$$eval(".sheet", e => e.length), 0, "arrastrar hacia abajo desde el tope debía cerrar el menú");
+  // 3) a mitad del contenido: arrastrar hacia abajo solo desplaza hacia arriba, no cierra
+  await largo();
+  await page.evaluate(() => { document.querySelector(".sheet").scrollTop = 600; });
+  c = await caja();
+  await deslizar(c.x, c.y, c.y + 200);
+  assert.equal(await page.$$eval(".sheet", e => e.length), 1, "con el menú a mitad de scroll no debía cerrarse");
+  assert.ok((await caja()).scroll < 600, "debía desplazarse hacia arriba");
+  await page.evaluate(() => cerrarSheet());
+  // 4) el menú principal también
+  await page.evaluate(() => document.querySelector("#btn-menu").click());
+  await page.waitForSelector("#mi-x");
+  await page.evaluate(() => { document.querySelector(".sheet").scrollTop = 0; });
+  c = await caja();
+  await deslizar(c.x, c.y, c.y + 300);
+  assert.equal(await page.$("#mi-x"), null, "el menú principal debía cerrarse");
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));

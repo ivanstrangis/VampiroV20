@@ -180,7 +180,7 @@ textarea.notes{width:100%;min-height:120px;background:var(--panel);border:1px so
 .saved{font-size:16px;color:var(--muted);min-height:1.2em;margin-top:4px}
 
 .sheet-bg{position:absolute;inset:0;background:rgba(10,6,12,.6);display:flex;align-items:flex-end;z-index:20}
-.sheet{width:100%;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));max-height:85%;overflow-y:auto}
+.sheet{width:100%;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));max-height:85%;overflow-y:auto;overscroll-behavior:contain}
 .sheet h2{font-family:var(--gothic);font-weight:400;font-size:28px;margin:0 0 10px}
 .menu-item{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:8px}
 .menu-item b{display:block;font-weight:600}
@@ -1619,7 +1619,37 @@ function abrirSheet(html, setup){
   const root = $("#sheet-root");
   root.innerHTML = `<div class="sheet-bg"><div class="sheet gut" role="dialog" aria-modal="true">${html}</div></div>`;
   const bg = root.firstElementChild; bg.addEventListener("click", e => { if(e.target === bg) cerrarSheet(); });
+  deslizarParaCerrar(bg.firstElementChild, bg);
   setup && setup(bg);
+}
+/* Los menús (hojas desde abajo) se cierran arrastrándolos hacia abajo cuando ya están en el tope: si seguís deslizando, acompañan el dedo y se van. */
+function deslizarParaCerrar(hoja, fondo){
+  let y0 = null, yPrev = 0, t0 = 0, dy = 0, arrastrando = false;
+  const enCampoConScroll = el => { const t = el?.closest?.("textarea"); return !!t && t.scrollTop > 0; };
+  hoja.addEventListener("touchstart", e => { if(e.touches.length !== 1){ y0 = null; return; } y0 = yPrev = e.touches[0].clientY; t0 = e.timeStamp; dy = 0; arrastrando = false; }, {passive:true});
+  hoja.addEventListener("touchmove", e => {
+    if(y0 === null) return;
+    const y = e.touches[0].clientY;
+    if(!arrastrando){
+      // Empieza a arrastrar la hoja recién cuando está arriba de todo y el dedo sigue bajando.
+      if(y - yPrev > 0 && hoja.scrollTop <= 0 && !enCampoConScroll(e.target)){ arrastrando = true; y0 = yPrev; t0 = e.timeStamp; }
+      else { yPrev = y; return; }
+    }
+    dy = Math.max(0, y - y0); yPrev = y;
+    e.preventDefault();
+    hoja.style.transition = "none"; hoja.style.transform = `translateY(${dy}px)`;
+    fondo.style.opacity = String(Math.max(.35, 1 - dy / 500));
+  }, {passive:false});
+  const soltar = e => {
+    if(y0 === null || !arrastrando){ y0 = null; return; }
+    const rapido = dy > 40 && dy / Math.max(1, e.timeStamp - t0) > 0.6;
+    y0 = null; arrastrando = false;
+    const dur = reduce ? 0 : 0.18;
+    hoja.style.transition = `transform ${dur}s ease-out`; fondo.style.transition = `opacity ${dur}s ease-out`;
+    if(dy > 110 || rapido){ hoja.style.transform = "translateY(100%)"; fondo.style.opacity = "0"; setTimeout(() => { if(fondo.isConnected) cerrarSheet(); }, dur * 1000); }
+    else { hoja.style.transform = ""; fondo.style.opacity = ""; }
+  };
+  hoja.addEventListener("touchend", soltar); hoja.addEventListener("touchcancel", soltar);
 }
 const cerrarSheet = () => $("#sheet-root").innerHTML = "";
 $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
