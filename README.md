@@ -45,6 +45,7 @@ Los datos viven solo en tu dispositivo: si borrás los datos del navegador o cam
 - **Menú → Importar personaje** y elegí ese archivo para **restaurar**. Si algún personaje ya existe, se reemplaza.
 - **Exportar** un solo personaje (Menú → Exportar) sirve para pasárselo a otro jugador. También se importan los archivos `bbn-personaje` de la versión vieja.
 - **Partida → Exportar crónica** guarda solo el universo (la historia, los PNJ, las noches). Otro jugador la importa con **Partida → Crónica → Importar** y sigue la historia con su propio personaje. Ojo: el archivo incluye los secretos del Director.
+- **Paquete de crónica** (`vampirov20-paquete`): el material de un autor en un solo archivo. Se abre con **Menú → Importar personaje** (o **Crónica → Importar**) y muestra una vista previa antes de guardar nada. Trae `jugadores` (premisa, personajes ya armados y modelos de armas) y, opcionalmente, `director` (cuaderno con PNJ, misterios y frentes, más la historia). El jugador elige un personaje y si la juega **en mesa** (sin la parte del Director) o con **Narrador IA**. Todo lo que viene de afuera se trata como datos: se acota el tamaño y se descartan claves raras. El formato está descrito en el comentario de `leerPaquete` dentro de `index.html`.
 
 La clave del Narrador **nunca** va en un respaldo ni en una exportación. Se guarda solo en el dispositivo.
 

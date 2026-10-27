@@ -674,6 +674,51 @@ await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan
   await page.click("#ob-x");
 });
 
+await prueba("paquete de crónica: se previsualiza, trae personajes y armas, y la parte del Director solo entra si se elige Narrador IA", async () => {
+  const base = (await bajar("#mi-exp")).json;
+  const ficha = JSON.parse(JSON.stringify(base.ficha)); ficha.nombre = "Elena del Paquete"; ficha.concepto = "Archivista";
+  const paquete = { formato: "vampirov20-paquete", version: 1, meta: { nombre: "La noche del Faro", autor: "Un Director", tipo: "misterio" },
+    jugadores: { premisa: "Un faro abandonado atrae a los Condenados.",
+      personajes: [{ ficha, inventario: { items: [{ nombre: "Linterna", tipo: "equipo", lugar: "encima" }], refugios: [] } }],
+      modelos_armas: [{ clase: "cc", nombre: "Espada del Alba", dano_fuerza: 2, tipo_dano: "L", material: "Plata", extras: [{ id: "e1", nombre: "Hoja en llamas", condicional: true, activo: true, dados: 2, tipo: "A" }] }] },
+    director: { cuaderno: { premisa: "El Príncipe oculta el faro.", ciudad: "Mar del Plata", pnj: [{ nombre: "La Madrina", rol: "Prínceps", quiere: "Callar el faro", esconde: "Lo encendió ella" }], misterios: [], frentes: [], ganchos: [] },
+      cronica: { noches: [{ noche: 1, resumen: "Llegó al puerto." }] }, estado: { noche: 2, historia: "Noche 1: llegó al puerto." } } };
+  const ruta = join(tmp, "paquete-faro.json"); writeFileSync(ruta, JSON.stringify(paquete));
+  // 1) vista previa y modo en mesa: no entra nada del Director
+  await page.setInputFiles("#f-importar", ruta);
+  await page.waitForSelector("[data-pp]");
+  const previa = await page.textContent("#sheet-root");
+  assert.match(previa, /La noche del Faro/); assert.match(previa, /Un faro abandonado/); assert.match(previa, /Elena del Paquete/); assert.match(previa, /Espada del Alba/);
+  await foto("21-paquete-vista-previa");
+  await page.click('[data-pp="0"]');
+  await page.waitForFunction(() => F && F.nombre === "Elena del Paquete", null, { timeout: 15000 });
+  assert.equal(await page.evaluate(() => MUNDO.modo), "mesa");
+  assert.ok(!(await page.evaluate(() => MUNDO.cronica_id)), "en mesa no se importa la crónica");
+  assert.equal(await page.evaluate(() => MODELOS_USR.some(m => m.nombre === "Espada del Alba" && idValido(m.id))), true, "las armas del paquete quedan guardadas como modelos");
+  assert.equal(await page.evaluate(() => INV.items.some(o => o.nombre === "Linterna" && o.id)), true);
+  // 2) con Narrador IA: entra el cuaderno del Director, marcado como importado
+  await page.evaluate(() => { document.querySelector("#f-importar").value = ""; });
+  await page.setInputFiles("#f-importar", ruta);
+  await page.waitForSelector("[data-pq-modo]");
+  await page.click('[data-pq-modo="ia"]');
+  await page.click('[data-pp="0"]');
+  await page.waitForFunction(() => MUNDO.cronica_id && GUIA?.importado, null, { timeout: 15000 });
+  assert.equal(await page.evaluate(() => MUNDO.modo), "ia");
+  assert.equal(await page.evaluate(() => GUIA.pnj[0].nombre), "La Madrina");
+  assert.equal(await page.evaluate(() => CRON?.nombre), "La noche del Faro");
+  assert.match(await page.evaluate(() => bloqueDirector()), /autor externo/);
+  // 3) archivos que no valen
+  const mal = (obj, rx) => page.evaluate(([o, rx]) => { const r = leerPaquete(o); return r.error && new RegExp(rx).test(r.error); }, [obj, rx]);
+  assert.equal(await mal({ formato: "otra-cosa" }, "no es un paquete"), true);
+  assert.equal(await mal({ formato: "vampirov20-paquete", version: 9, jugadores: {} }, "versión más nueva"), true);
+  assert.equal(await mal({ formato: "vampirov20-paquete", version: 1, jugadores: { personajes: [{ ficha: {} }] } }, "vacío"), true);
+  // 4) el contenido se acota y no deja colar claves peligrosas
+  const a = await page.evaluate(() => { const o = acotar(JSON.parse('{"__proto__":{"x":1},"b":"' + "z".repeat(9000) + '","c":[' + Array(400).fill(1).join(",") + ']}')); return [Object.keys(o).join(), o.b.length, o.c.length]; });
+  assert.deepEqual(a, ["b,c", 8000, 300]);
+  await page.evaluate(id => cambiarPersonaje(id), idPrincipal);
+  await page.waitForFunction(() => F && F.nombre === "Test Vampiro", null, { timeout: 15000 });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
