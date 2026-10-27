@@ -714,16 +714,78 @@ const EFECTO_SALUD = ["Sin penalización.", "−1 dado. Se mueve con normalidad.
   "No puede moverse ni actuar, salvo curarse con Sangre o beber. Más daño contundente o letal: Letargo. Agravado: Muerte Definitiva. Sin Sangre: Letargo."];
 const TIPO_DANO = {C:"contundente", L:"letal", A:"agravado"};
 const MATERIALES = ["Plata","Hierro frío","Madera","Hueso","Obsidiana","Bendecida"];
+/* Condiciones automáticas: la app mira la ficha y activa sola una característica (o permite empuñar el arma). */
+const COND_OP = {">=":"≥", "<=":"≤", "=":"="};
+const COND_ESP = {salud_pct:"Salud restante (%)", sangre:"Sangre actual", fv_actual:"Fuerza de Voluntad actual", fuerza_de_voluntad:"Fuerza de Voluntad (permanente)"};
+const nombreCond = k => COND_ESP[k] || lab(k);
+const etiquetaCond = c => `${nombreCond(c.rasgo)} ${COND_OP[c.op] || "≥"} ${c.valor}${c.rasgo === "salud_pct" ? "%" : ""}`;
+function valorCond(k){
+  if(!F) return 0;
+  if(k === "salud_pct") return Math.round(100 * (1 - F.salud.length / SALUDV().length));
+  if(k === "sangre") return F.sangre;
+  if(k === "fv_actual") return F.fv;
+  try { return rasgo(k); } catch(_){ return 0; }
+}
+function cumple(c){
+  if(!c || !c.rasgo || !F) return true;
+  const v = valorCond(c.rasgo), n = Number(c.valor) || 0;
+  return c.op === "<=" ? v <= n : c.op === "=" ? v === n : v >= n;
+}
+const reqTxt = o => `Requiere ${etiquetaCond(o.requisito)}${cumple(o.requisito) ? "" : o.forzada ? " (no lo cumple, la empuña igual)" : " (NO lo cumple: no puede empuñarla)"}`;
+function exigirEmpunable(o){
+  if(o.requisito && !cumple(o.requisito) && !o.forzada) throw new ReglaError(`${F.nombre} no puede empuñar «${o.nombre}»: pide ${etiquetaCond(o.requisito)}.`);
+}
+function condOpciones(sel, conNinguno){
+  const grupo = (t, ks) => `<optgroup label="${t}">${ks.map(k => `<option value="${k}" ${k===sel?"selected":""}>${esc(nombreCond(k))}</option>`).join("")}</optgroup>`;
+  const disc = [...new Set([...CLANES.flatMap(c => c[2]), ...Object.keys(F?.disciplinas || {})])].sort();
+  return (conNinguno ? `<option value="">Ninguno</option>` : "") + grupo("Estado", ["salud_pct","sangre","fv_actual"]) + grupo("Humanidad y Voluntad", ["humanidad","fuerza_de_voluntad"])
+    + grupo("Atributos", Object.values(ATR).flat()) + grupo("Habilidades", HAB_ALL) + grupo("Virtudes", VIRT) + grupo("Disciplinas", disc) + grupo("Trasfondos", TRASFONDOS);
+}
+const condResto = (idp, c, att) => `<div class="jrow"><div class="field"><label for="${idp}-op">Se cumple si es</label><select id="${idp}-op" ${att("op")}>${Object.entries({">=":"mayor o igual (≥)","<=":"menor o igual (≤)","=":"igual (=)"}).map(([k,t]) => `<option value="${k}" ${k===c.op?"selected":""}>${t}</option>`).join("")}</select></div><div class="field"><label for="${idp}-v">Valor${c.rasgo === "salud_pct" ? " (%)" : ""}</label><input id="${idp}-v" type="number" min="0" max="100" value="${c.valor}" ${att("valor")}></div></div>`;
+/* Modelos de armas que guarda el jugador: viven en un documento propio y viajan en las exportaciones y el respaldo. */
+let MODELOS_USR = [];
+const CAMPOS_MODELO = {fuego:["dano","alcance","cadencia","mecanismo","capacidad_cargador","rafaga"], cc:["dano_fuerza","tipo_dano"]};
+const CAMPOS_ESP = ["material","bono_dano","tipo_esp","propiedades","extras","requisito"];
+async function guardarModelos(){ try { await DB.doc("modelos_armas/lista").set({items:clonar(MODELOS_USR)}); } catch(e){ sysMsg("No se pudo guardar el modelo ("+(e.code||"error")+").", "err"); } }
+async function fusionarModelos(lista){
+  if(!Array.isArray(lista)) return 0;
+  let n = 0;
+  for(const m of lista){
+    if(!m || !idValido(m.id) || !["fuego","cc"].includes(m.clase) || !String(m.nombre || "").trim()) continue;
+    const c = clonar(m), i = MODELOS_USR.findIndex(x => x.id === m.id);
+    if(i >= 0) MODELOS_USR[i] = c; else MODELOS_USR.push(c);
+    n++;
+  }
+  if(n) await guardarModelos();
+  return n;
+}
+function capturarModelo(A, clase){
+  const m = {clase, nombre:A.nombre.trim()};
+  for(const k of [...CAMPOS_MODELO[clase], ...CAMPOS_ESP]) if(A[k] !== undefined && A[k] !== "") m[k] = clonar(A[k]);
+  (m.extras || []).forEach(e => { if(e.condicional) e.activo = false; });
+  return m;
+}
+function aplicarModelo(A, m){
+  CAMPOS_ESP.forEach(k => delete A[k]);
+  for(const k of [...CAMPOS_MODELO[m.clase], ...CAMPOS_ESP]) if(m[k] !== undefined) A[k] = clonar(m[k]);
+  (A.extras || []).forEach((e, i) => { e.id = "e" + Date.now().toString(36) + i; if(e.condicional) e.activo = false; });
+  if(m.clase === "fuego"){ A.cargador = A.capacidad_cargador; A.recamara = A.mecanismo === "revolver" ? 0 : 1; }
+}
+const opcionesModelo = (clase, basicos, sel) => {
+  const op = (v, t) => `<option value="${esc(v)}" ${v===sel?"selected":""}>${esc(t)}</option>`, usr = MODELOS_USR.filter(m => m.clase === clase);
+  return op("", "Personalizada") + `<optgroup label="Modelos básicos">${basicos.map(([v, t]) => op(v, t)).join("")}</optgroup>`
+    + (usr.length ? `<optgroup label="Otros modelos (los tuyos)">${usr.map(m => op("u:" + m.id, m.nombre)).join("")}</optgroup>` : "");
+};
 /* Lo especial de un arma es un dato que declara el jugador: suma dados de daño y/o cambia el tipo de daño; el resto (plata, magia…) lo ve el Narrador. */
 const extrasArma = o => o.extras || [];
-const extraOn = e => !e.condicional || !!e.activo;
+const extraOn = e => e.cond ? cumple(e.cond) : !e.condicional || !!e.activo;
 const bonoEsp = o => (o.bono_dano||0) + extrasArma(o).filter(extraOn).reduce((a,e) => a + (e.dados||0), 0);
 const tipoEsp = o => [o.tipo_esp, ...extrasArma(o).filter(extraOn).map(e => e.tipo)].filter(Boolean).sort((a,b) => "CLA".indexOf(b) - "CLA".indexOf(a))[0] || "";   // si hay varios, gana el más grave
 const textoEsp = o => [o.material, o.propiedades, ...extrasArma(o).filter(extraOn).map(e => e.texto ? `${e.nombre}: ${e.texto}` : e.nombre)].filter(Boolean).join(" · ");
 const detalleExtra = e => [e.dados ? `+${e.dados} dado${e.dados>1?"s":""}` : "", e.tipo ? TIPO_DANO[e.tipo] : "", e.texto].filter(Boolean).join(", ");
-const infoEsp = o => [o.material, o.bono_dano ? `+${o.bono_dano} dado${o.bono_dano>1?"s":""} de daño` : "", o.tipo_esp ? `daño ${TIPO_DANO[o.tipo_esp]}` : "", o.propiedades,
-  ...extrasArma(o).map(e => e.condicional ? `${e.nombre} (${e.activo ? "ACTIVA" : "inactiva"}${e.activo && detalleExtra(e) ? ": "+detalleExtra(e) : ""})` : `${e.nombre}${detalleExtra(e) ? " ("+detalleExtra(e)+")" : ""}`)].filter(Boolean).join(" · ");
-const togglesEsp = o => extrasArma(o).filter(e => e.condicional).map(e => `<button type="button" class="tog" data-efon="${esc(o.id)}|${esc(e.id)}" aria-pressed="${!!e.activo}">${esc(e.nombre)}: ${e.activo ? "activa" : "inactiva"}</button>`).join("");
+const infoEsp = o => [o.requisito ? reqTxt(o) : "", o.material, o.bono_dano ? `+${o.bono_dano} dado${o.bono_dano>1?"s":""} de daño` : "", o.tipo_esp ? `daño ${TIPO_DANO[o.tipo_esp]}` : "", o.propiedades,
+  ...extrasArma(o).map(e => e.cond ? `${e.nombre} (${extraOn(e) ? "ACTIVA" : "inactiva"} · ${etiquetaCond(e.cond)}${extraOn(e) && detalleExtra(e) ? ": "+detalleExtra(e) : ""})` : e.condicional ? `${e.nombre} (${e.activo ? "ACTIVA" : "inactiva"}${e.activo && detalleExtra(e) ? ": "+detalleExtra(e) : ""})` : `${e.nombre}${detalleExtra(e) ? " ("+detalleExtra(e)+")" : ""}`)].filter(Boolean).join(" · ");
+const togglesEsp = o => extrasArma(o).filter(e => e.condicional && !e.cond).map(e => `<button type="button" class="tog" data-efon="${esc(o.id)}|${esc(e.id)}" aria-pressed="${!!e.activo}">${esc(e.nombre)}: ${e.activo ? "activa" : "inactiva"}</button>`).join("");
 function fijarExtra(o, e, on, quien){
   e.activo = !!on; evento("propiedad_arma", {objeto:o.id, propiedad:e.nombre, activa:e.activo, quien});
   anotarMesa(`${o.nombre}: ${e.nombre} ${e.activo ? "activada" : "desactivada"}`); guardarInv();
@@ -895,6 +957,7 @@ const manual = o => o.mecanismo === "cerrojo" || o.mecanismo === "bombeo";
 function validarDisparo(o, balas){
   normArma(o);
   if(o.tipo !== "arma_fuego") throw new ReglaError(`«${o.nombre}» no es un arma de fuego.`);
+  exigirEmpunable(o);
   if(o.mecanismo === "revolver"){ if(o.tambor < balas) throw new ReglaError(`«${o.nombre}» tiene ${o.tambor} bala(s) en el tambor. Hay que recargar.`); return; }
   if(manual(o) && balas > 1) throw new ReglaError(`«${o.nombre}» es de ${o.mecanismo}: dispara una bala por acción.`);
   if(o.recamara + o.cargador < balas) throw new ReglaError(`«${o.nombre}» tiene ${o.recamara + o.cargador} bala(s) (recámara ${o.recamara ? "cargada" : "vacía"}, cargador ${o.cargador}). Hay que recargar.`);
@@ -1238,7 +1301,7 @@ function herramientas(){
       if(acc === "guardar"){ if(!i.refugio) throw new ReglaError("Falta decir en qué refugio se guarda."); const r = moverObjeto(String(i.nombre), String(i.refugio)); turnoActual.agregar({rol:"sistema", clase:"rule", texto:`Inventario · ${r.objeto} queda guardado en ${r.a}`}); return r; }
       if(acc === "retirar"){ const r = moverObjeto(String(i.nombre), ENCIMA); turnoActual.agregar({rol:"sistema", clase:"rule", texto:`Inventario · toma ${r.objeto} de ${r.de}`}); return r; }
       if(acc === "activar" || acc === "desactivar"){ const o = exigirObjeto(String(i.nombre)), b = norm(String(i.propiedad || ""));
-        const conds = extrasArma(o).filter(e => e.condicional);
+        const conds = extrasArma(o).filter(e => e.condicional && !e.cond);
         const e = conds.find(x => b && (norm(x.nombre).includes(b) || b.includes(norm(x.nombre)))) || (conds.length === 1 && !b ? conds[0] : null);
         if(!e) throw new ReglaError(conds.length ? `«${o.nombre}» no tiene una propiedad «${i.propiedad||""}». Condicionales: ${conds.map(x => x.nombre).join(", ")}.` : `«${o.nombre}» no tiene propiedades condicionales.`);
         fijarExtra(o, e, acc === "activar", "narrador"); turnoActual.agregar({rol:"sistema", clase:"rule", texto:`${o.nombre} · ${e.nombre} ${e.activo ? "activada" : "desactivada"}`}); return {arma:o.nombre, propiedad:e.nombre, activa:e.activo}; }
@@ -1584,7 +1647,7 @@ async function exportarPersonaje(){
   if(!F) return;
   const ajena = esHojaAjena();
   const datos = {formato:FORMATO, version:2, exportado:new Date().toISOString(), ficha:F, inventario:INV, conocimiento:CON, notas:NOTAS,
-    mundo:MUNDO, director: ajena || (!GUIA?.texto && !GUIA?.premisa) ? null : GUIA, cronica: ajena ? null : CRONICA, cronica_meta: ajena ? null : CRON, mensajes: ajena ? null : await mensajesDe(PJ)};
+    mundo:MUNDO, director: ajena || (!GUIA?.texto && !GUIA?.premisa) ? null : GUIA, cronica: ajena ? null : CRONICA, cronica_meta: ajena ? null : CRON, mensajes: ajena ? null : await mensajesDe(PJ), modelos_armas:MODELOS_USR};
   const nombre = (norm(F.nombre).replace(/[^a-z0-9_]/g, "").slice(0, 40) || "personaje") + ".json";
   const texto = JSON.stringify(datos, null, 1);
   try {
@@ -1625,6 +1688,7 @@ $("#f-importar").addEventListener("change", async e => {
   if(!jug && Array.isArray(d.mensajes)) for(const m of d.mensajes) if(m && Number.isFinite(Number(m.n))) docs.push(["mensajes_" + id + "/m" + m.n, m]);
   try { for(const [p, x] of docs) await DB.doc(p).set(JSON.parse(JSON.stringify(x))); }
   catch(e2){ sysMsg("No se pudo importar ("+(e2.code||"error")+").", "err"); return; }
+  await fusionarModelos(d.modelos_armas);
   evento("personaje_importado", {pj:id, nombre:f.nombre, como_jugador:jug});
   await cambiarPersonaje(id);
   sysMsg(jug ? `Hoja de ${f.nombre} abierta. Está en el menú, en «Soy narrador».` : `${f.nombre} importado.`, "rule");
@@ -3702,10 +3766,10 @@ function abrirObjeto(id, clase){
   const lugares = () => `<option value="${ENCIMA}" ${A.lugar===ENCIMA?"selected":""}>Equipado</option>` + refugios().map(r => `<option value="${esc(r.id)}" ${A.lugar===r.id?"selected":""}>${esc(r.nombre)}</option>`).join("");
   const num = (id, lab_, v, min, max) => `<div class="field"><label for="${id}">${lab_}</label><input id="${id}" type="number" min="${min}" max="${max}" value="${v}"></div>`;
   const pintar = () => {
-    const fuego = A.tipo === "arma_fuego", cc = A.tipo === "arma_cc", rev = A.mecanismo === "revolver";
+    const fuego = A.tipo === "arma_fuego", cc = A.tipo === "arma_cc", rev = A.mecanismo === "revolver", esp = (A.tipo === "arma_fuego" || A.tipo === "arma_cc") && (modSel === "" || modSel.startsWith("u:"));
     $("#ob-body").innerHTML = `
       <div class="field"><label for="ob-n">Nombre</label><input id="ob-n" value="${esc(A.nombre)}" placeholder="${fuego ? "Ej.: Pistola 9 mm del templo" : cc ? "Ej.: Machete de trekking" : "Ej.: Linterna táctica"}"></div>
-      ${fuego ? `<div class="field"><label for="ob-mod">Modelo (completa los datos del manual)</label><select id="ob-mod"><option value="">Personalizada</option>${MODELOS_FUEGO.map(m => `<option value="${m.k}" ${m.k===modSel?"selected":""}>${esc(m.n)}</option>`).join("")}</select></div>
+      ${fuego ? `<div class="field"><label for="ob-mod">Modelo (completa los datos del manual)</label><select id="ob-mod">${opcionesModelo("fuego", MODELOS_FUEGO.map(m => [m.k, m.n]), modSel)}</select></div>
         <div class="jrow">${num("ob-dano","Daño",A.dano,1,15)}${num("ob-alc","Alcance (m)",A.alcance,1,999)}</div>
         <div class="jrow">${num("ob-cad","Cadencia",A.cadencia,1,10)}<div class="field"><label for="ob-mec">Mecanismo</label><select id="ob-mec">${Object.entries(MECANISMO).map(([k,t]) => `<option value="${k}" ${k===A.mecanismo?"selected":""}>${t}</option>`).join("")}</select></div></div>
         <label class="chk"><input type="checkbox" id="ob-raf" ${A.rafaga?"checked":""}> Permite ráfaga y automático</label>
@@ -3715,10 +3779,12 @@ function abrirObjeto(id, clase){
         <div class="sec-lbl" style="margin-top:12px">${rev ? "Cargas de repuesto" : "Cargadores de repuesto"}</div>
         ${reps.map((r,i) => `<div class="arow"><span>Repuesto ${i+1}</span><span class="fb"><input type="number" class="rep-n" data-rep="${i}" min="0" max="${A.capacidad_cargador}" value="${r.balas}" aria-label="Balas del repuesto ${i+1}"><small>balas</small><button type="button" data-repq="${i}" aria-label="Quitar repuesto">×</button></span></div>`).join("") || '<p class="pen" style="margin:0">Ninguno.</p>'}
         <button class="btn ghost" type="button" id="ob-rep" style="margin-top:6px">Agregar ${rev ? "carga" : "cargador"} lleno</button>`
-      : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc"><option value="">Personalizada</option>${MODELOS_CC.map(m => `<option value="${m.k}" ${m.k===modSel?"selected":""}>${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})</option>`).join("")}</select></div>
+      : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc">${opcionesModelo("cc", MODELOS_CC.map(m => [m.k, `${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})`]), modSel)}</select></div>
         <div class="jrow">${num("ob-f","Daño: Fuerza +",A.dano_fuerza,0,6)}<div class="field"><label for="ob-td">Tipo de daño</label><select id="ob-td">${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_dano?"selected":""}>${t}</option>`).join("")}</select></div></div>`
       : `<div class="field"><label for="ob-nota">Nota</label><input id="ob-nota" value="${esc(A.nota||"")}" placeholder="Para qué sirve, de quién es…"></div>`}
-      ${fuego || cc ? `<details class="cat esp-arma" ${infoEsp(A) || (A.extras||[]).length ? "open" : ""}><summary>Propiedades especiales</summary>
+      ${esp ? `<details class="cat esp-arma" ${infoEsp(A) || (A.extras||[]).length ? "open" : ""}><summary>Propiedades especiales</summary>
+        <div class="field"><label for="rq-r">Requisito para empuñarla</label><select id="rq-r" data-req="rasgo">${condOpciones(A.requisito?.rasgo, true)}</select></div>
+        ${A.requisito ? condResto("rq", A.requisito, k => `data-req="${k}"`) : ""}
         <div class="jrow"><div class="field"><label for="ob-mat">Material</label><select id="ob-mat"><option value="">Común</option>${MATERIALES.map(m => `<option ${m===A.material?"selected":""}>${m}</option>`).join("")}</select></div>${num("ob-bono","Dados de daño extra",A.bono_dano||0,0,10)}</div>
         <div class="field"><label for="ob-tesp">Tipo de daño especial</label><select id="ob-tesp"><option value="">El normal del arma</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_esp?"selected":""}>${t}</option>`).join("")}</select></div>
         <div class="field"><label for="ob-prop">Qué tiene de especial</label><input id="ob-prop" value="${esc(A.propiedades||"")}" placeholder="Ej.: mágica, brilla ante bestias"></div>
@@ -3727,10 +3793,13 @@ function abrirObjeto(id, clase){
           <div class="field"><label for="ef-n${i}">Nombre</label><input id="ef-n${i}" data-ef="${i}:nombre" value="${esc(e.nombre||"")}" placeholder="Ej.: Hoja en llamas"></div>
           <div class="field"><label for="ef-t${i}">Qué hace</label><input id="ef-t${i}" data-ef="${i}:texto" value="${esc(e.texto||"")}" placeholder="Ej.: la hoja arde y prende lo que toca"></div>
           <div class="jrow"><div class="field"><label for="ef-d${i}">Dados de daño extra</label><input id="ef-d${i}" data-ef="${i}:dados" type="number" min="0" max="10" value="${e.dados||0}"></div><div class="field"><label for="ef-y${i}">Tipo de daño</label><select id="ef-y${i}" data-ef="${i}:tipo"><option value="">Sin cambio</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===e.tipo?"selected":""}>${t}</option>`).join("")}</select></div></div>
-          <label class="chk"><input type="checkbox" data-ef="${i}:condicional" ${e.condicional?"checked":""}> Condicional: se activa y se desactiva (ej.: prender el fuego)</label>
+          <div class="field"><label for="ef-m${i}">¿Cuándo se activa?</label><select id="ef-m${i}" data-efm="${i}"><option value="siempre" ${!e.cond && !e.condicional ? "selected" : ""}>Siempre</option><option value="mano" ${!e.cond && e.condicional ? "selected" : ""}>A mano (un interruptor, ej.: prender el fuego)</option><option value="auto" ${e.cond ? "selected" : ""}>Solo si se cumple una condición de la ficha</option></select></div>
+          ${e.cond ? `<div class="field"><label for="ef-c${i}">Qué se mira</label><select id="ef-c${i}" data-efc="${i}:rasgo">${condOpciones(e.cond.rasgo)}</select></div>${condResto("ef-c" + i, e.cond, k => `data-efc="${i}:${k}"`)}` : ""}
           <button type="button" class="btn ghost" data-efq="${i}" style="margin-top:6px">Quitar esta característica</button></div>`).join("")}
         <button type="button" class="btn ghost" id="ef-add" style="margin-top:6px">+ Agregar característica</button>
-      </details>` : ""}
+      </details>
+      <div class="row" style="justify-content:flex-start;margin-top:8px"><button type="button" class="btn ghost" id="ob-gm">Guardar modelo</button>${modSel.startsWith("u:") ? '<button type="button" class="btn ghost" id="ob-bm">Borrar modelo guardado</button>' : ""}</div>
+      <p class="pen" id="ob-info" style="margin:4px 0 0"></p>` : ""}
       <div class="field" style="margin-top:10px"><label for="ob-l">Dónde está</label><select id="ob-l">${lugares()}</select></div>
       <p class="err" id="ob-err"></p>
       <div class="row">${o ? '<button class="btn ghost" type="button" id="ob-del" style="margin-right:auto">Borrar</button>' : ""}<button class="btn ghost" type="button" id="ob-x">Cancelar</button><button class="btn" type="button" id="ob-ok">Guardar</button></div>`;
@@ -3744,16 +3813,40 @@ function abrirObjeto(id, clase){
     val("ob-mat", e => A.material = e.value); val("ob-bono", e => A.bono_dano = Math.max(0, Math.min(10, +e.value || 0)));
     val("ob-tesp", e => A.tipo_esp = e.value); val("ob-prop", e => A.propiedades = e.value);
     document.querySelectorAll("[data-ef]").forEach(inp => inp.oninput = inp.onchange = () => { const [i, k] = inp.dataset.ef.split(":"), e = A.extras[+i];
-      e[k] = k === "condicional" ? inp.checked : k === "dados" ? Math.max(0, Math.min(10, +inp.value || 0)) : inp.value; });
+      e[k] = k === "dados" ? Math.max(0, Math.min(10, +inp.value || 0)) : inp.value; });
+    document.querySelectorAll("[data-efm]").forEach(sel => sel.onchange = () => { const e = A.extras[+sel.dataset.efm], v = sel.value;
+      e.condicional = v === "mano"; if(v === "auto") e.cond ||= {rasgo:"humanidad", op:">=", valor:10}; else delete e.cond; pintar(); });
+    document.querySelectorAll("[data-efc]").forEach(inp => inp.oninput = inp.onchange = () => { const [i, k] = inp.dataset.efc.split(":"), c = A.extras[+i].cond;
+      c[k] = k === "valor" ? Math.max(0, +inp.value || 0) : inp.value; if(k === "rasgo") pintar(); });
+    document.querySelectorAll("[data-req]").forEach(inp => inp.oninput = inp.onchange = () => { const k = inp.dataset.req;
+      if(k === "rasgo"){ if(!inp.value) delete A.requisito; else (A.requisito ||= {rasgo:inp.value, op:">=", valor:3}).rasgo = inp.value; pintar(); return; }
+      A.requisito[k] = k === "valor" ? Math.max(0, +inp.value || 0) : inp.value; });
+    const gm = $("#ob-gm"); if(gm) gm.onclick = async () => {
+      if(!A.nombre.trim()){ $("#ob-err").textContent = "Ponele un nombre al arma: ese va a ser el nombre del modelo."; return; }
+      const clase = A.tipo === "arma_fuego" ? "fuego" : "cc", m = capturarModelo(A, clase), prev = MODELOS_USR.find(x => x.clase === clase && norm(x.nombre) === norm(m.nombre));
+      m.id = prev ? prev.id : "m" + Date.now().toString(36);
+      if(prev) MODELOS_USR[MODELOS_USR.indexOf(prev)] = m; else MODELOS_USR.push(m);
+      modSel = "u:" + m.id; await guardarModelos(); pintar();
+      $("#ob-info").textContent = `Modelo «${m.nombre}» ${prev ? "actualizado" : "guardado"}. Lo vas a encontrar en «Otros modelos».`; };
+    const bm = $("#ob-bm"); if(bm) bm.onclick = async () => {
+      if(!bm.dataset.ok){ bm.dataset.ok = "1"; bm.textContent = "Tocá de nuevo para borrarlo"; return; }
+      MODELOS_USR = MODELOS_USR.filter(x => "u:" + x.id !== modSel); modSel = ""; await guardarModelos(); pintar(); };
     document.querySelectorAll("[data-efq]").forEach(b => b.onclick = () => { A.extras.splice(+b.dataset.efq, 1); pintar(); });
     const efAdd = $("#ef-add"); if(efAdd) efAdd.onclick = () => { (A.extras ||= []).push({id:"e"+Date.now().toString(36)+A.extras.length, nombre:"", texto:"", dados:0, tipo:"", condicional:false, activo:false}); pintar(); document.querySelector(`[data-ef="${A.extras.length-1}:nombre"]`)?.focus(); };
     val("ob-nota", e => A.nota = e.value); val("ob-l", e => A.lugar = e.value);
     const mec = $("#ob-mec"); if(mec) mec.onchange = e => { A.mecanismo = e.target.value; pintar(); };
-    const mod = $("#ob-mod"); if(mod) mod.onchange = e => { const m = MODELOS_FUEGO.find(x => x.k === e.target.value); modSel = m ? m.k : ""; if(!m) return;
-      Object.assign(A, {dano:m.dano, alcance:m.alcance, cadencia:m.cadencia, mecanismo:m.mec, capacidad_cargador:m.cap, cargador:m.cap, recamara: m.mec === "revolver" ? 0 : 1, rafaga:!!m.rafaga});
+    const cambiaModelo = (clase, lista) => e => { const v = e.target.value; modSel = v;
+      if(v.startsWith("u:")){
+        const m = MODELOS_USR.find(x => "u:" + x.id === v); if(!m){ modSel = ""; return pintar(); }
+        aplicarModelo(A, m); if(!A.nombre.trim() || A.nombre === nomAuto) A.nombre = nomAuto = m.nombre; return pintar(); }
+      const m = lista.find(x => x.k === v);
+      if(!m) return pintar();   // «Personalizada»: se muestran las propiedades especiales
+      CAMPOS_ESP.forEach(k => delete A[k]);
+      if(clase === "fuego") Object.assign(A, {dano:m.dano, alcance:m.alcance, cadencia:m.cadencia, mecanismo:m.mec, capacidad_cargador:m.cap, cargador:m.cap, recamara: m.mec === "revolver" ? 0 : 1, rafaga:!!m.rafaga});
+      else { A.dano_fuerza = m.f; A.tipo_dano = m.t; }
       if(!A.nombre.trim() || A.nombre === nomAuto) A.nombre = nomAuto = m.n; pintar(); };
-    const modc = $("#ob-modc"); if(modc) modc.onchange = e => { const m = MODELOS_CC.find(x => x.k === e.target.value); modSel = m ? m.k : ""; if(!m) return;
-      A.dano_fuerza = m.f; A.tipo_dano = m.t; if(!A.nombre.trim() || A.nombre === nomAuto) A.nombre = nomAuto = m.n; pintar(); };
+    const mod = $("#ob-mod"); if(mod) mod.onchange = cambiaModelo("fuego", MODELOS_FUEGO);
+    const modc = $("#ob-modc"); if(modc) modc.onchange = cambiaModelo("cc", MODELOS_CC);
     document.querySelectorAll("[data-rep]").forEach(i => i.oninput = e => reps[+i.dataset.rep].balas = Math.max(0, +e.target.value || 0));
     document.querySelectorAll("[data-repq]").forEach(b => b.onclick = () => { reps.splice(+b.dataset.repq, 1); pintar(); });
     const addr = $("#ob-rep"); if(addr) addr.onclick = () => { reps.push({id:null, balas:A.capacidad_cargador, lugar:A.lugar}); pintar(); };
@@ -3773,8 +3866,10 @@ function abrirObjeto(id, clase){
       const nuevo = JSON.parse(JSON.stringify(A)); nuevo.nombre = nuevo.nombre.trim();
       if(nuevo.propiedades) nuevo.propiedades = nuevo.propiedades.trim();
       ["material","bono_dano","tipo_esp","propiedades"].forEach(k => { if(!nuevo[k]) delete nuevo[k]; });
-      if(nuevo.extras){ nuevo.extras.forEach((e, i) => { e.nombre = (e.nombre || "").trim() || `Propiedad ${i+1}`; e.texto = (e.texto || "").trim(); if(!e.tipo) delete e.tipo; if(!e.dados) delete e.dados; if(!e.condicional){ delete e.condicional; delete e.activo; } else e.activo = !!e.activo; });
+      if(nuevo.extras){ nuevo.extras.forEach((e, i) => { e.nombre = (e.nombre || "").trim() || `Propiedad ${i+1}`; e.texto = (e.texto || "").trim(); if(!e.tipo) delete e.tipo; if(!e.dados) delete e.dados;
+        if(e.cond){ delete e.condicional; delete e.activo; e.cond.valor = Number(e.cond.valor) || 0; } else if(!e.condicional){ delete e.condicional; delete e.activo; } else e.activo = !!e.activo; });
         if(!nuevo.extras.length) delete nuevo.extras; }
+      if(!nuevo.requisito) delete nuevo.forzada;
       if(!o) nuevo.id = norm(nuevo.nombre).replace(/[^a-z0-9_]/g,"").slice(0,30) + "_" + Date.now().toString(36);
       if(nuevo.tipo === "arma_fuego"){
         if(nuevo.mecanismo === "revolver"){ nuevo.tambor = nuevo.cargador; nuevo.capacidad_tambor = nuevo.capacidad_cargador; delete nuevo.recamara; delete nuevo.cargador; delete nuevo.capacidad_cargador; }
@@ -3859,7 +3954,7 @@ function armasJuegoHTML(){
         <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b>
           <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
           <span class="a-info">${pool} dados<br>daño ${(Number(o.dano)||0) + bonoEsp(o)}</span></div>
-        ${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
+        ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
         <div class="a-ctl"><select class="mini" aria-label="Dificultad del disparo" data-ja="${o.id}:dif">${[["4","Dif. 4 · quemarropa"],["5","Dif. 5"],["6","Dif. 6 · corto"],["7","Dif. 7"],["8","Dif. 8 · largo"],["9","Dif. 9"],["10","Dif. 10"]].map(([v,t]) => `<option value="${v}" ${s.dif===v?"selected":""}>${t}</option>`).join("")}</select>
           ${o.rafaga ? `<select class="mini" aria-label="Modo de disparo" data-ja="${o.id}:modo"><option value="simple" ${s.modo==="simple"?"selected":""}>Simple</option><option value="rafaga" ${s.modo==="rafaga"?"selected":""}>Ráfaga</option><option value="auto" ${s.modo==="auto"?"selected":""}>Automático</option></select>` : ""}${fvBtn}</div>
         <div class="par"><button class="btn ghost" type="button" data-jrec="${o.id}" ${reps.length ? "" : "disabled"}>Recargar</button><button class="btn" type="button" data-jdisp="${o.id}" ${balas ? "" : "disabled"}>Disparar</button></div>
@@ -3869,14 +3964,17 @@ function armasJuegoHTML(){
     return `<div class="arma">
       <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[tipoEsp(o)||o.tipo_dano||"L"]}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
         <span class="a-info">${pool} dados<br>daño ${dd}</span></div>
-      ${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
+      ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
       <div class="a-ctl"><select class="mini" aria-label="Dificultad del ataque" data-ja="${o.id}:dif">${[4,5,6,7,8,9,10].map(v => `<option value="${v}" ${s.dif===String(v)?"selected":""}>Dif. ${v}</option>`).join("")}</select>${fvBtn}</div>
       <button class="btn" type="button" data-jatk="${o.id}" style="width:100%">Atacar</button>
       <div class="jout">${s.out}</div></div>`;
   }).join("")}</div></section>`;
 }
+const reqAviso = o => !o.requisito || cumple(o.requisito) ? "" : `<div class="a-ctl"><span class="a-sub" style="color:var(--bad)">Pide ${esc(etiquetaCond(o.requisito))}.</span><button type="button" class="tog" data-forzar="${esc(o.id)}" aria-pressed="${!!o.forzada}">Empuñarla igual</button></div>`;
 function enlazarArmas(){
   enlazarExtras(renderJuegoConservando);
+  document.querySelectorAll("[data-forzar]").forEach(b => b.onclick = () => { const o = INV.items.find(x => x.id === b.dataset.forzar); o.forzada = !o.forzada;
+    anotarMesa(`${o.nombre}: ${o.forzada ? "la empuña aunque no cumpla el requisito" : "vuelve a pedir el requisito"}`); guardarInv(); renderJuegoConservando(); });
   document.querySelectorAll("[data-ja]").forEach(e => e.onchange = () => { const [id, k] = e.dataset.ja.split(":"); JA[id][k] = e.value; if(k === "modo") renderJuegoConservando(); });
   document.querySelectorAll("[data-jafv]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jafv]; s.fv = !s.fv; b.setAttribute("aria-pressed", s.fv); });
   document.querySelectorAll("[data-jaesp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jaesp]; s.esp = !s.esp; b.setAttribute("aria-pressed", s.esp); });
@@ -3926,6 +4024,7 @@ async function atacarCC(id){
   const o = INV.items.find(x => x.id === id), s = JA[id], ft = foto();
   try {
     activo(); const pen = penalizacion(); if(pen === null) throw new ReglaError(`${F.nombre} está Incapacitado y no puede atacar.`);
+    exigirEmpunable(o);
     let auto = 0; if(s.fv){ gastarFV("éxito automático (ataque)"); auto = 1; }
     const pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("pelea_con_armas") + pen), dif = Number(s.dif);
     const out = document.querySelector(`[data-jatk="${id}"]`)?.closest(".arma")?.querySelector(".jout");
@@ -4310,7 +4409,7 @@ async function mensajesDe(id){
 async function respaldarTodo(){
   if(!DB) return;
   cerrarSheet(); sysMsg("Armando el respaldo…", "", false);
-  const out = {formato:FORMATO_RESPALDO, version:1, exportado:new Date().toISOString(), personajes:[], cronicas:[]}, vistas = new Set();
+  const out = {formato:FORMATO_RESPALDO, version:1, exportado:new Date().toISOString(), personajes:[], cronicas:[], modelos_armas:clonar(MODELOS_USR)}, vistas = new Set();
   const cronica = async cid => {
     if(vistas.has(cid)) return; vistas.add(cid);
     const [meta, director, cron] = await Promise.all([leerDoc("cronicas/" + cid), leerDoc("director/" + cid), leerDoc("cronica/" + cid)]);
@@ -4350,6 +4449,7 @@ async function restaurarRespaldo(d){
       if(c.director) await DB.doc("director/" + c.id).set(clonar(c.director));
       if(c.cronica) await DB.doc("cronica/" + c.id).set(clonar(c.cronica));
     }
+    await fusionarModelos(d.modelos_armas);
   } catch(e){ const er = $("#rb-err"); if(er) er.textContent = "No se pudo restaurar (" + (e.code || e.message || "error") + ")."; if(btn){ btn.disabled = false; btn.textContent = "Restaurar"; } return; }
   sysMsg(`Respaldo restaurado: ${d.personajes.length} personaje(s) y ${(d.cronicas || []).length} crónica(s).`, "rule", false);
   await cambiarPersonaje(d.personajes[0]?.id || PJ);
@@ -4357,6 +4457,7 @@ async function restaurarRespaldo(d){
 
 async function iniciar(){
   if(!(await conectar())) return sinBase(PLATAFORMA === "local" ? "No se pudo abrir el guardado de este navegador. Revisá que no esté en modo privado ni con el almacenamiento bloqueado." : "Abrí esta página dentro de claude.ai con tu sesión iniciada. Si te la compartieron, pedí permiso para usarla, no solo para verla.");
+  try { MODELOS_USR = (await leerDoc("modelos_armas/lista"))?.items || []; } catch(_){}
   if(!PJ){
     const mios = (await listarPersonajes()).filter(p => !p.hoja_de_jugador);
     if(!mios.length){ F = null; return pantallaVacia(); }

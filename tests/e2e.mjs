@@ -511,6 +511,7 @@ await prueba("armas especiales: material, dados extra y tipo de daño propios; e
   await page.fill("#ob-n", "Daga de plata");
   await page.selectOption("#ob-modc", { index: 3 });
   assert.equal(await page.inputValue("#ob-n"), "Daga de plata", "un nombre escrito a mano no se pisa");
+  await page.selectOption("#ob-modc", "");   // las propiedades especiales solo aparecen en «Personalizada»
   await page.evaluate(() => document.querySelector(".esp-arma").open = true);
   await page.selectOption("#ob-mat", "Plata");
   await page.fill("#ob-bono", "2");
@@ -545,7 +546,7 @@ await prueba("armas especiales: característica condicional (hoja en llamas) que
   await page.fill('[data-ef="0:texto"]', "la hoja arde y prende lo que toca");
   await page.fill('[data-ef="0:dados"]', "2");
   await page.selectOption('[data-ef="0:tipo"]', "A");
-  await page.check('[data-ef="0:condicional"]');
+  await page.selectOption('[data-efm="0"]', "mano");
   await foto("18-arma-condicional-editor");
   await page.click("#ob-ok");
   const id = await page.evaluate(() => INV.items.find(o => o.nombre === "Espada de llamas").id);
@@ -570,6 +571,107 @@ await prueba("armas especiales: característica condicional (hoja en llamas) que
   await page.reload(); await esperarListo();
   assert.deepEqual(await dano(), [2, "A"], "el estado queda guardado");
   await page.evaluate(id => { const o = INV.items.find(x => x.id === id); o.extras[0].activo = false; guardarInv(); }, id);
+});
+
+await prueba("armas especiales: requisito para empuñar y características que se activan solas según la ficha", async () => {
+  await page.evaluate(() => mostrarPestana("inv"));
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  await page.fill("#ob-n", "Hacha rúnica");
+  await page.evaluate(() => document.querySelector(".esp-arma").open = true);
+  await page.selectOption("#rq-r", "fuerza");
+  await page.fill("#rq-v", "9");
+  await page.click("#ef-add");
+  await page.fill('[data-ef="0:nombre"]', "Furia de pura sangre");
+  await page.fill('[data-ef="0:dados"]', "2");
+  await page.selectOption('[data-efm="0"]', "auto");
+  await page.selectOption('[data-efc="0:rasgo"]', "humanidad");
+  await page.fill('[data-efc="0:valor"]', "10");
+  await page.click("#ef-add");
+  await page.fill('[data-ef="1:nombre"]', "Sed de sangre");
+  await page.fill('[data-ef="1:dados"]', "1");
+  await page.selectOption('[data-efm="1"]', "auto");
+  await page.selectOption('[data-efc="1:rasgo"]', "salud_pct");
+  await page.selectOption('[data-efc="1:op"]', "<=");
+  await page.fill('[data-efc="1:valor"]', "50");
+  await foto("19-arma-condiciones");
+  await page.click("#ob-ok");
+  const id = await page.evaluate(() => INV.items.find(o => o.nombre === "Hacha rúnica").id);
+  const o = () => page.evaluate(id => INV.items.find(x => x.id === id), id);
+  assert.deepEqual((await o()).requisito, { rasgo: "fuerza", op: ">=", valor: 9 });
+  // requisito: con Fuerza baja no se puede empuñar, salvo «Empuñarla igual»
+  const empuna = () => page.evaluate(id => { try { exigirEmpunable(INV.items.find(x => x.id === id)); return ""; } catch (e) { return e.message; } }, id);
+  assert.match(await empuna(), /no puede empuñar «Hacha rúnica»: pide Fuerza ≥ 9/);
+  await page.evaluate(id => { INV.items.find(x => x.id === id).forzada = true; }, id);
+  assert.equal(await empuna(), "");
+  await page.evaluate(id => { INV.items.find(x => x.id === id).forzada = false; }, id);
+  // condiciones automáticas
+  const bono = (hum, salud) => page.evaluate(([id, hum, salud]) => { const f0 = [F.humanidad, F.salud]; F.humanidad = hum; F.salud = salud;
+    const r = [bonoEsp(INV.items.find(x => x.id === id)), valorCond("salud_pct")]; [F.humanidad, F.salud] = f0; return r; }, [id, hum, salud]);
+  assert.deepEqual(await bono(7, []), [0, 100], "ninguna se cumple");
+  assert.deepEqual((await bono(10, []))[0], 2, "Humanidad 10 activa la primera");
+  assert.deepEqual((await bono(7, ["L", "L", "L", "L"])), [1, 43], "con menos del 50% de salud se activa la segunda");
+  assert.deepEqual((await bono(10, ["L", "L", "L", "L"]))[0], 3, "se suman");
+  assert.match(await page.evaluate(() => contexto()), /Requiere Fuerza ≥ 9 \(NO lo cumple/);
+  // el Narrador no puede activar a mano una que depende de la ficha
+  const e = await page.evaluate(async () => { turnoActual = { agregar() { return {}; }, cortar() {} };
+    try { await herramientas().find(x => x.name === "inventario").execute({ accion: "activar", nombre: "hacha runica", propiedad: "furia" }); return ""; } catch (x) { return x.message; } });
+  assert.match(e, /no tiene propiedades condicionales/);
+});
+await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
+  await page.evaluate(() => mostrarPestana("inv"));
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  await page.selectOption("#ob-modc", { index: 1 });
+  assert.equal(await page.$("#ob-mat"), null, "con un modelo básico no se muestran las propiedades especiales");
+  assert.equal(await page.$("#ob-gm"), null);
+  await page.selectOption("#ob-modc", "");
+  await page.fill("#ob-n", "Daga de plata bendita");
+  await page.evaluate(() => document.querySelector(".esp-arma").open = true);
+  await page.selectOption("#ob-mat", "Plata");
+  await page.fill("#ob-bono", "1");
+  await page.click("#ob-gm");
+  await page.waitForFunction(() => /guardado/.test(document.querySelector("#ob-info")?.textContent || ""));
+  assert.equal(await page.evaluate(() => MODELOS_USR.length), 1);
+  assert.equal(await page.evaluate(() => leerDoc("modelos_armas/lista").then(d => d.items.length)), 1, "queda guardado en la base");
+  await page.click("#ob-x");
+  // en un arma nueva aparece entre «Otros modelos» y completa todo
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  assert.match(await page.textContent("#ob-modc"), /Daga de plata bendita/);
+  await page.selectOption("#ob-modc", { label: "Daga de plata bendita" });
+  assert.equal(await page.inputValue("#ob-n"), "Daga de plata bendita");
+  assert.equal(await page.inputValue("#ob-mat"), "Plata");
+  assert.equal(await page.inputValue("#ob-bono"), "1");
+  await foto("20-modelo-guardado");
+  await page.click("#ob-x");
+  // viaja en la exportación del personaje y en el respaldo completo
+  const ex = await bajar("#mi-exp");
+  assert.equal(ex.json.modelos_armas.length, 1);
+  assert.equal(ex.json.modelos_armas[0].nombre, "Daga de plata bendita");
+  const rs = await bajar("#mi-resp");
+  assert.equal(rs.json.modelos_armas.length, 1);
+  const ctx2 = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, acceptDownloads: true });
+  const p2 = await ctx2.newPage();
+  await p2.goto(BASE);
+  await p2.waitForFunction(() => document.querySelector("#pj-nombre") && document.querySelector("#pj-nombre").textContent !== "Cargando…");
+  assert.equal(await p2.evaluate(() => MODELOS_USR.length), 0);
+  await p2.setInputFiles("#f-importar", ex.ruta);
+  await p2.waitForFunction(() => F && F.nombre, null, { timeout: 15000 });
+  assert.equal(await p2.evaluate(() => MODELOS_USR.map(m => m.nombre).join()), "Daga de plata bendita", "la exportación del personaje trae los modelos");
+  await ctx2.close();
+  const ctx3 = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, acceptDownloads: true });
+  const p3 = await ctx3.newPage();
+  await p3.goto(BASE);
+  await p3.waitForFunction(() => document.querySelector("#pj-nombre") && document.querySelector("#pj-nombre").textContent !== "Cargando…");
+  await p3.setInputFiles("#f-importar", rs.ruta);
+  await p3.waitForSelector("#rb-ok"); await p3.click("#rb-ok");
+  await p3.waitForFunction(() => F && F.nombre, null, { timeout: 15000 });
+  assert.equal(await p3.evaluate(() => MODELOS_USR.length), 1, "el respaldo trae los modelos");
+  await ctx3.close();
+  // borrar el modelo guardado
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  await page.selectOption("#ob-modc", { label: "Daga de plata bendita" });
+  await page.click("#ob-bm"); await page.click("#ob-bm");
+  await page.waitForFunction(() => MODELOS_USR.length === 0);
+  await page.click("#ob-x");
 });
 
 await prueba("sin internet la app abre desde la copia guardada", async () => {
