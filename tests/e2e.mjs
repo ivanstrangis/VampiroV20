@@ -498,6 +498,43 @@ await prueba("puntos gratuitos: círculos de otro color que se pueden sumar y sa
   await page.evaluate(() => mostrarPestana("chat"));
 });
 
+await prueba("armas especiales: material, dados extra y tipo de daño propios; el cambio de modelo actualiza el nombre", async () => {
+  await page.evaluate(() => mostrarPestana("inv"));
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  await page.selectOption("#ob-modc", { index: 1 });
+  const n1 = await page.inputValue("#ob-n");
+  assert.ok(n1, "el modelo debía completar el nombre");
+  await page.selectOption("#ob-modc", { index: 2 });
+  const n2 = await page.inputValue("#ob-n");
+  assert.notEqual(n2, n1, "al cambiar de modelo el nombre debía cambiar");
+  assert.ok(await page.$eval("#ob-modc", e => e.value), "el modelo elegido debía quedar marcado");
+  await page.fill("#ob-n", "Daga de plata");
+  await page.selectOption("#ob-modc", { index: 3 });
+  assert.equal(await page.inputValue("#ob-n"), "Daga de plata", "un nombre escrito a mano no se pisa");
+  await page.evaluate(() => document.querySelector(".esp-arma").open = true);
+  await page.selectOption("#ob-mat", "Plata");
+  await page.fill("#ob-bono", "2");
+  await page.selectOption("#ob-tesp", "A");
+  await page.fill("#ob-prop", "mágica, brilla ante bestias");
+  await foto("17-arma-especial-editor");
+  await page.click("#ob-ok");
+  const a = await page.evaluate(() => INV.items.find(o => o.nombre === "Daga de plata"));
+  assert.equal(a.material, "Plata"); assert.equal(a.bono_dano, 2); assert.equal(a.tipo_esp, "A"); assert.equal(a.propiedades, "mágica, brilla ante bestias");
+  assert.match(await page.textContent("#s-inv"), /Plata · \+2 dados de daño · daño agravado · mágica/);
+  assert.match(await page.evaluate(() => contexto()), /ESPECIAL: Plata/, "el Narrador debe saber que es especial");
+  // el ataque suma los dados extra y el daño sale agravado
+  const out = await page.evaluate(id => {
+    const o = INV.items.find(x => x.id === id); JA[id] ||= {dif:"6", out:""};
+    resultadoAtaque(o, tirar(5, 2, {auto: 3}), ""); const base = JA[id].dano; return base; }, a.id);
+  assert.ok(out >= 2 + (a.dano_fuerza || 0), "el daño debía incluir los 2 dados extra");
+  await page.evaluate(id => tirarDanoArma(id), a.id);
+  assert.match(await page.evaluate(id => JA[id].out, a.id), /agravado/);
+  // un arma común no muestra nada especial y no guarda campos vacíos
+  await page.evaluate(() => abrirObjeto(null, "cc")); await page.fill("#ob-n", "Palo"); await page.click("#ob-ok");
+  const c = await page.evaluate(() => INV.items.find(o => o.nombre === "Palo"));
+  assert.ok(!("material" in c) && !("bono_dano" in c) && !("tipo_esp" in c) && !("propiedades" in c));
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

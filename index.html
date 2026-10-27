@@ -713,6 +713,9 @@ const EFECTO_SALUD = ["Sin penalización.", "−1 dado. Se mueve con normalidad.
   "−2 dados. No puede correr; si se mueve y ataca en el mismo turno, pierde dados.", "−2 dados. Solo puede cojear (3 m por turno).", "−5 dados. Solo puede arrastrarse (1 m por turno).",
   "No puede moverse ni actuar, salvo curarse con Sangre o beber. Más daño contundente o letal: Letargo. Agravado: Muerte Definitiva. Sin Sangre: Letargo."];
 const TIPO_DANO = {C:"contundente", L:"letal", A:"agravado"};
+const MATERIALES = ["Plata","Hierro frío","Madera","Hueso","Obsidiana","Bendecida"];
+/* Lo especial de un arma es un dato que declara el jugador: suma dados de daño y/o cambia el tipo de daño; el resto (plata, magia…) lo ve el Narrador. */
+const infoEsp = o => [o.material, o.bono_dano ? `+${o.bono_dano} dado${o.bono_dano>1?"s":""} de daño` : "", o.tipo_esp ? `daño ${TIPO_DANO[o.tipo_esp]}` : "", o.propiedades].filter(Boolean).join(" · ");
 const fmtPen = p => p === null ? "—" : p === 0 ? "0" : "−"+Math.abs(p);
 const penDados = p => fmtPen(p) + (Math.abs(p) === 1 ? " dado" : " dados");
 // Un cuadrado de salud dibujado: vacío, / contundente, X letal, ✱ agravado.
@@ -1109,7 +1112,7 @@ function contexto(){
     hambriento:hambriento(), salud:nivelSalud(), penalizacion_heridas:penalizacion(), estado:F.estado||"activo",
     meritos:(F.meritos||[]).map(d => d.nombre+": "+d.efecto), defectos:(F.defectos||[]).map(d => d.nombre+": "+d.efecto), criterios_de_mesa:F.criterios_texto||[]
   };
-  const desc = o => o.nombre + (o.tipo==="arma_fuego"?` (${MECANISMO[normArma(o).mecanismo]}; ${estadoArma(o)}; daño ${o.dano}, cadencia ${o.cadencia})`:"") + (o.tipo==="cargador"?` (${o.balas} balas)`:"") + (o.nota?` — ${o.nota}`:"");
+  const desc = o => o.nombre + (o.tipo==="arma_fuego"?` (${MECANISMO[normArma(o).mecanismo]}; ${estadoArma(o)}; daño ${o.dano}, cadencia ${o.cadencia})`:"") + (o.tipo==="cargador"?` (${o.balas} balas)`:"") + (infoEsp(o)?` [ESPECIAL: ${infoEsp(o)}]`:"") + (o.nota?` — ${o.nota}`:"");
   const inv = encima().map(desc);
   const guardado = refugios().map(r => `${r.nombre}${r.descripcion?" ("+r.descripcion+")":""}${r.notas?" [notas del jugador: "+String(r.notas).slice(0,240)+"]":""}: ${INV.items.filter(o => o.lugar === r.id).map(desc).join("; ") || "nada guardado"}`);
   return `${INSTRUCCIONES}
@@ -1448,7 +1451,7 @@ function renderInv(){
   const ic = o => ({arma_fuego:"ARMA",arma_cc:"FILO",cargador:"CRG",ropa:"ROPA"}[o.tipo] || "OBJ");
   const mesa = modoMesa();
   const it = o => `<div class="item"><div class="ic">${ic(o)}</div><div style="min-width:0;flex:1"><b>${mesa ? `<button type="button" class="info" data-obj="${esc(o.id)}">${esc(o.nombre)}</button>` : esc(o.nombre)}</b>${o.pertenece_a?'<span class="tag">del templo</span>':""}
-    <p>${o.tipo==="arma_fuego"?`${MECANISMO[normArma(o).mecanismo]} · daño ${o.dano} · alcance ${o.alcance} · cadencia ${o.cadencia}`:o.tipo==="arma_cc"?`Fuerza +${o.dano_fuerza}, ${o.tipo_dano==="L"?"letal":"contundente"}`:o.tipo==="cargador"?`${o.balas} balas${o.balas>=15?" · lleno":o.balas===0?" · vacío":""}`:""}${o.nota?(o.tipo?" · ":"")+esc(o.nota):""}${o.estado?" · "+esc(o.estado):""}</p>
+    <p>${o.tipo==="arma_fuego"?`${MECANISMO[normArma(o).mecanismo]} · daño ${o.dano} · alcance ${o.alcance} · cadencia ${o.cadencia}`:o.tipo==="arma_cc"?`Fuerza +${o.dano_fuerza}, ${TIPO_DANO[o.tipo_dano||"L"]}`:o.tipo==="cargador"?`${o.balas} balas${o.balas>=15?" · lleno":o.balas===0?" · vacío":""}`:""}${infoEsp(o)?" · ✦ "+esc(infoEsp(o)):""}${o.nota?(o.tipo?" · ":"")+esc(o.nota):""}${o.estado?" · "+esc(o.estado):""}</p>
     ${o.tipo==="arma_fuego"?armaHTML(o):""}</div></div>`;
   const lleva = encima(), armas = lleva.filter(o => ["arma_fuego","arma_cc","cargador"].includes(o.tipo)), resto = lleva.filter(o => !armas.includes(o));
   const refs = refugios().map(r => { const hay = INV.items.filter(o => o.lugar === r.id);
@@ -3693,6 +3696,11 @@ function abrirObjeto(id, clase){
       : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc"><option value="">Personalizada</option>${MODELOS_CC.map(m => `<option value="${m.k}" ${m.k===modSel?"selected":""}>${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})</option>`).join("")}</select></div>
         <div class="jrow">${num("ob-f","Daño: Fuerza +",A.dano_fuerza,0,6)}<div class="field"><label for="ob-td">Tipo de daño</label><select id="ob-td">${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_dano?"selected":""}>${t}</option>`).join("")}</select></div></div>`
       : `<div class="field"><label for="ob-nota">Nota</label><input id="ob-nota" value="${esc(A.nota||"")}" placeholder="Para qué sirve, de quién es…"></div>`}
+      ${fuego || cc ? `<details class="cat esp-arma" ${infoEsp(A) ? "open" : ""}><summary>Propiedades especiales</summary>
+        <div class="jrow"><div class="field"><label for="ob-mat">Material</label><select id="ob-mat"><option value="">Común</option>${MATERIALES.map(m => `<option ${m===A.material?"selected":""}>${m}</option>`).join("")}</select></div>${num("ob-bono","Dados de daño extra",A.bono_dano||0,0,10)}</div>
+        <div class="field"><label for="ob-tesp">Tipo de daño especial</label><select id="ob-tesp"><option value="">El normal del arma</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_esp?"selected":""}>${t}</option>`).join("")}</select></div>
+        <div class="field"><label for="ob-prop">Qué tiene de especial</label><input id="ob-prop" value="${esc(A.propiedades||"")}" placeholder="Ej.: mágica, arde al tocar, brilla ante bestias"></div>
+      </details>` : ""}
       <div class="field" style="margin-top:10px"><label for="ob-l">Dónde está</label><select id="ob-l">${lugares()}</select></div>
       <p class="err" id="ob-err"></p>
       <div class="row">${o ? '<button class="btn ghost" type="button" id="ob-del" style="margin-right:auto">Borrar</button>' : ""}<button class="btn ghost" type="button" id="ob-x">Cancelar</button><button class="btn" type="button" id="ob-ok">Guardar</button></div>`;
@@ -3703,6 +3711,8 @@ function abrirObjeto(id, clase){
     val("ob-cap", e => { A.capacidad_cargador = Math.max(1, +e.value || 1); });
     val("ob-car", e => A.cargador = Math.max(0, +e.value || 0));
     val("ob-f", e => A.dano_fuerza = Math.max(0, +e.value || 0)); val("ob-td", e => A.tipo_dano = e.value);
+    val("ob-mat", e => A.material = e.value); val("ob-bono", e => A.bono_dano = Math.max(0, Math.min(10, +e.value || 0)));
+    val("ob-tesp", e => A.tipo_esp = e.value); val("ob-prop", e => A.propiedades = e.value);
     val("ob-nota", e => A.nota = e.value); val("ob-l", e => A.lugar = e.value);
     const mec = $("#ob-mec"); if(mec) mec.onchange = e => { A.mecanismo = e.target.value; pintar(); };
     const mod = $("#ob-mod"); if(mod) mod.onchange = e => { const m = MODELOS_FUEGO.find(x => x.k === e.target.value); modSel = m ? m.k : ""; if(!m) return;
@@ -3727,6 +3737,8 @@ function abrirObjeto(id, clase){
         if(reps.some(r => r.balas > A.capacidad_cargador)) return err(`Un repuesto tiene más balas que la capacidad (${A.capacidad_cargador}).`);
       }
       const nuevo = JSON.parse(JSON.stringify(A)); nuevo.nombre = nuevo.nombre.trim();
+      if(nuevo.propiedades) nuevo.propiedades = nuevo.propiedades.trim();
+      ["material","bono_dano","tipo_esp","propiedades"].forEach(k => { if(!nuevo[k]) delete nuevo[k]; });
       if(!o) nuevo.id = norm(nuevo.nombre).replace(/[^a-z0-9_]/g,"").slice(0,30) + "_" + Date.now().toString(36);
       if(nuevo.tipo === "arma_fuego"){
         if(nuevo.mecanismo === "revolver"){ nuevo.tambor = nuevo.cargador; nuevo.capacidad_tambor = nuevo.capacidad_cargador; delete nuevo.recamara; delete nuevo.cargador; delete nuevo.capacidad_cargador; }
@@ -3809,16 +3821,16 @@ function armasJuegoHTML(){
       const pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("armas_de_fuego") + pen + (s.modo === "rafaga" ? 2 : s.modo === "auto" ? 10 : 0));
       return `<div class="arma">
         <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b>
-          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span></div>
-          <span class="a-info">${pool} dados<br>daño ${o.dano}</span></div>
+          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
+          <span class="a-info">${pool} dados<br>daño ${(Number(o.dano)||0) + (o.bono_dano||0)}</span></div>
         <div class="a-ctl"><select class="mini" aria-label="Dificultad del disparo" data-ja="${o.id}:dif">${[["4","Dif. 4 · quemarropa"],["5","Dif. 5"],["6","Dif. 6 · corto"],["7","Dif. 7"],["8","Dif. 8 · largo"],["9","Dif. 9"],["10","Dif. 10"]].map(([v,t]) => `<option value="${v}" ${s.dif===v?"selected":""}>${t}</option>`).join("")}</select>
           ${o.rafaga ? `<select class="mini" aria-label="Modo de disparo" data-ja="${o.id}:modo"><option value="simple" ${s.modo==="simple"?"selected":""}>Simple</option><option value="rafaga" ${s.modo==="rafaga"?"selected":""}>Ráfaga</option><option value="auto" ${s.modo==="auto"?"selected":""}>Automático</option></select>` : ""}${fvBtn}</div>
         <div class="par"><button class="btn ghost" type="button" data-jrec="${o.id}" ${reps.length ? "" : "disabled"}>Recargar</button><button class="btn" type="button" data-jdisp="${o.id}" ${balas ? "" : "disabled"}>Disparar</button></div>
         <div class="jout">${s.out}</div></div>`;
     }
-    const bf = bonoFisico("fuerza"), pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("pelea_con_armas") + pen), dd = rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + (bf.auto ? ` +${bf.auto} aut.` : "");
+    const bf = bonoFisico("fuerza"), pool = Math.max(0, rasgo("destreza") + bonoFisico("destreza").dados + rasgo("pelea_con_armas") + pen), dd = rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + (o.bono_dano||0) + (bf.auto ? ` +${bf.auto} aut.` : "");
     return `<div class="arma">
-      <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[o.tipo_dano||"L"]}</span></span></div>
+      <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[o.tipo_esp||o.tipo_dano||"L"]}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
         <span class="a-info">${pool} dados<br>daño ${dd}</span></div>
       <div class="a-ctl"><select class="mini" aria-label="Dificultad del ataque" data-ja="${o.id}:dif">${[4,5,6,7,8,9,10].map(v => `<option value="${v}" ${s.dif===String(v)?"selected":""}>Dif. ${v}</option>`).join("")}</select>${fvBtn}</div>
       <button class="btn" type="button" data-jatk="${o.id}" style="width:100%">Atacar</button>
@@ -3839,9 +3851,9 @@ function resultadoAtaque(o, t, extra){
   const dados = carasDados(t.dados, t.dificultad, anuladosT(t), t.especialidad) + (t.automaticos ? '<div class="d10 auto">FV</div>' : "");
   const s = JA[o.id], acierto = t.resultado === "exito";
   const bf = bonoFisico("fuerza"), cc = o.tipo !== "arma_fuego";
-  const base = cc ? rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) : Number(o.dano)||0, masEx = Math.max(t.neto - 1, 0);
+  const base = cc ? rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + (o.bono_dano||0) : (Number(o.dano)||0) + (o.bono_dano||0), masEx = Math.max(t.neto - 1, 0);
   const nd = acierto ? base + masEx : 0;
-  const desglose = acierto ? ` (base ${base}${cc ? ` = Fuerza ${rasgo("fuerza")}${bf.dados ? " + Potencia "+bf.dados : ""} + ${o.dano_fuerza||0} del arma` : " del arma"}${masEx ? ` + ${masEx} por éxito${masEx>1?"s":""} extra` : ""})` : "";
+  const desglose = acierto ? ` (base ${base}${cc ? ` = Fuerza ${rasgo("fuerza")}${bf.dados ? " + Potencia "+bf.dados : ""} + ${o.dano_fuerza||0} del arma${o.bono_dano ? " + "+o.bono_dano+" especial" : ""}` : `${o.bono_dano ? " + "+o.bono_dano+" especial" : ""} del arma`}${masEx ? ` + ${masEx} por éxito${masEx>1?"s":""} extra` : ""})` : "";
   s.dano = acierto ? nd : null; s.danoAuto = acierto && cc ? bf.auto : 0;
   s.out = `<div class="droll">${dados}</div><div class="res ${acierto?"good":"bad"}">${textoTirada(t)}${acierto ? ` · ${nd} dados de daño${desglose}${s.danoAuto ? ` + ${s.danoAuto} éxito${s.danoAuto>1?"s":""} de Potencia` : ""}` : ""}</div>${extra ? `<p class="pen" style="margin:2px 0 6px">${extra}</p>` : ""}
     ${acierto ? `<button class="btn ghost" type="button" data-jdano="${o.id}" style="margin-top:6px">Tirar daño (${nd} dados)</button>` : ""}`;
@@ -3891,10 +3903,10 @@ async function tirarDanoArma(id){
   const o = INV.items.find(x => x.id === id), s = JA[id]; if(!s?.dano) return;
   const t = tirar(s.dano, 6, {unosRestan:false, auto:s.danoAuto || 0});
   s.out = s.out.replace(/<button[^>]*data-jdano[^>]*>[\s\S]*?<\/button>/, "");
-  const tipo = o.tipo === "arma_fuego" ? "letal (contundente contra vampiros, salvo a la cabeza)" : TIPO_DANO[o.tipo_dano || "L"];
-  s.out += `<div class="droll">${t.dados.map(v => caraDado(v, 6, false)).join("")}${Array.from({length:s.danoAuto||0}, () => '<div class="d10 auto">POT</div>').join("")}</div><div class="res good">${t.neto} nivel${t.neto===1?"":"es"} de daño ${tipo}</div>`;
+  const tipo = o.tipo_esp ? TIPO_DANO[o.tipo_esp] : o.tipo === "arma_fuego" ? "letal (contundente contra vampiros, salvo a la cabeza)" : TIPO_DANO[o.tipo_dano || "L"];
+  s.out += `<div class="droll">${t.dados.map(v => caraDado(v, 6, false)).join("")}${Array.from({length:s.danoAuto||0}, () => '<div class="d10 auto">POT</div>').join("")}</div><div class="res good">${t.neto} nivel${t.neto===1?"":"es"} de daño ${tipo}</div>${o.material || o.propiedades ? `<p class="pen" style="margin:2px 0 6px">✦ ${esc([o.material, o.propiedades].filter(Boolean).join(" · "))}</p>` : ""}`;
   s.dano = null; s.danoAuto = 0;
-  anotarMesa(`Daño con ${o.nombre}: [${t.dados.join(", ")}]${t.automaticos ? ` + ${t.automaticos} aut. (Potencia)` : ""} → ${t.neto} nivel(es) ${tipo}`);
+  anotarMesa(`Daño con ${o.nombre}: [${t.dados.join(", ")}]${t.automaticos ? ` + ${t.automaticos} aut. (Potencia)` : ""} → ${t.neto} nivel(es) ${tipo}${o.material || o.propiedades ? " · arma especial: "+[o.material, o.propiedades].filter(Boolean).join(", ") : ""}`);
   renderJuegoConservando();
 }
 
