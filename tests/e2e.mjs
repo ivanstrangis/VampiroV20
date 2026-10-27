@@ -535,6 +535,43 @@ await prueba("armas especiales: material, dados extra y tipo de daño propios; e
   assert.ok(!("material" in c) && !("bono_dano" in c) && !("tipo_esp" in c) && !("propiedades" in c));
 });
 
+await prueba("armas especiales: característica condicional (hoja en llamas) que se activa a mano y por el Narrador", async () => {
+  await page.evaluate(() => mostrarPestana("inv"));
+  await page.evaluate(() => abrirObjeto(null, "cc"));
+  await page.fill("#ob-n", "Espada de llamas");
+  await page.evaluate(() => document.querySelector(".esp-arma").open = true);
+  await page.click("#ef-add");
+  await page.fill('[data-ef="0:nombre"]', "Hoja en llamas");
+  await page.fill('[data-ef="0:texto"]', "la hoja arde y prende lo que toca");
+  await page.fill('[data-ef="0:dados"]', "2");
+  await page.selectOption('[data-ef="0:tipo"]', "A");
+  await page.check('[data-ef="0:condicional"]');
+  await foto("18-arma-condicional-editor");
+  await page.click("#ob-ok");
+  const id = await page.evaluate(() => INV.items.find(o => o.nombre === "Espada de llamas").id);
+  const dano = () => page.evaluate(id => { const o = INV.items.find(x => x.id === id); return [bonoEsp(o), tipoEsp(o)]; }, id);
+  assert.deepEqual(await dano(), [0, ""], "apagada no suma nada");
+  assert.match(await page.textContent("#s-inv"), /Hoja en llamas: inactiva/);
+  await page.click(`[data-efon$="|${await page.evaluate(id => INV.items.find(x => x.id === id).extras[0].id, id)}"]`);
+  assert.deepEqual(await dano(), [2, "A"], "prendida suma 2 dados y es agravado");
+  assert.match(await page.textContent("#s-inv"), /Hoja en llamas: activa/);
+  assert.match(await page.evaluate(() => contexto()), /Hoja en llamas \(ACTIVA/);
+  // el Narrador la apaga con la herramienta del inventario
+  const r = await page.evaluate(async () => { turnoActual = {agregar(){ return {}; }, cortar(){}};
+    const t = herramientas().find(x => x.name === "inventario");
+    return await t.execute({accion: "desactivar", nombre: "espada de llamas", propiedad: "llamas"}); });
+  assert.equal(r.activa, false);
+  assert.deepEqual(await dano(), [0, ""]);
+  const e = await page.evaluate(async () => { const t = herramientas().find(x => x.name === "inventario");
+    try { await t.execute({accion: "activar", nombre: "espada de llamas", propiedad: "hielo"}); return ""; } catch(x){ return x.message; } });
+  assert.match(e, /no tiene una propiedad/);
+  await page.evaluate(async () => { const t = herramientas().find(x => x.name === "inventario"); await t.execute({accion: "activar", nombre: "espada de llamas", propiedad: "llamas"}); });
+  assert.deepEqual(await dano(), [2, "A"]);
+  await page.reload(); await esperarListo();
+  assert.deepEqual(await dano(), [2, "A"], "el estado queda guardado");
+  await page.evaluate(id => { const o = INV.items.find(x => x.id === id); o.extras[0].activo = false; guardarInv(); }, id);
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
