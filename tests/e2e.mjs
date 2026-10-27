@@ -770,6 +770,10 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
   await lado(-200); assert.equal(await actual(), "chat");
   await page.evaluate(() => cerrarSheet());
 });
+await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
+  const r = await page.evaluate(() => ["body", "#app", "button", ".screen", "input"].map(q => { const e = document.querySelector(q); return e ? getComputedStyle(e).touchAction : "manipulation"; }));
+  assert.deepEqual([...new Set(r)], ["manipulation"]);
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));

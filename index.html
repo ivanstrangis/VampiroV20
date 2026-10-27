@@ -31,7 +31,7 @@
   --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
   color-scheme:dark;
 }
-*{box-sizing:border-box}
+*{box-sizing:border-box;touch-action:manipulation}   /* sin zoom por doble toque; el pellizco y el desplazamiento siguen igual */
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:18px;line-height:1.5;display:flex;flex-direction:column}
 .gut{padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
