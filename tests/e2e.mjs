@@ -745,11 +745,19 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y }] });
     for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + dx * i / 8, y: y + 4 }] }); await page.waitForTimeout(16); }
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(550);
   };
   const actual = () => page.$eval('#tabs [aria-selected="true"]', b => b.dataset.t);
   await page.evaluate(() => { cerrarSheet(); mostrarPestana("chat"); });
   assert.equal(await actual(), "chat");
+  // la pantalla sigue al dedo mientras se arrastra
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 300, y: 400 }] });
+  for (let i = 1; i <= 6; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 300 - 12 * i, y: 402 }] }); await page.waitForTimeout(60); }
+  const sigue = await page.$eval(".screen:not([hidden])", e => e.style.transform);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(550);
+  assert.match(sigue, /translateX\(-\d+/, "la pantalla debía acompañar al dedo");
+  assert.equal(await actual(), "chat", "un arrastre corto y lento vuelve a su lugar");
   await lado(-200); assert.equal(await actual(), "ficha");
   await lado(-200); assert.equal(await actual(), "inv");
   if (process.env.DBG) console.log(await page.evaluate(() => { const el = document.elementFromPoint(300, 400), out = []; for (let n = el; n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); out.push(n.tagName + "." + n.className + " ox=" + cs.overflowX + " sw=" + n.scrollWidth + " cw=" + n.clientWidth); } return out.join(" | "); }));
@@ -763,7 +771,7 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 200, y: 300 }] });
   for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 200 - 10 * i, y: 300 + 40 * i }] }); await page.waitForTimeout(16); }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(550);
   assert.equal(await actual(), "chat");
   // con un menú abierto no cambia de pestaña
   await page.evaluate(() => abrirSheet("<h2>x</h2>", () => {}));
@@ -773,6 +781,49 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
 await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
   const r = await page.evaluate(() => ["body", "#app", "button", ".screen", "input"].map(q => { const e = document.querySelector(q); return e ? getComputedStyle(e).touchAction : "manipulation"; }));
   assert.deepEqual([...new Set(r)], ["manipulation"]);
+});
+await prueba("Salud y Sangre: la hoja queda abierta, marca lo nuevo y lo curado, y se puede deshacer", async () => {
+  await page.evaluate(() => { cerrarSheet(); mostrarPestana("chat"); F.salud = ["L", "L"]; F.sangre = 3; guardarFicha(); });
+  // Salud: un toque = un nivel, sin elegir cantidad
+  await page.evaluate(() => abrirSalud());
+  assert.equal(await page.$("#hs-mas"), null, "ya no hay selector de cantidad");
+  await page.click('[data-hr="C"]'); await page.click('[data-hr="C"]');
+  assert.equal(await page.evaluate(() => F.salud.length), 4);
+  assert.equal(await page.$("#hs-body") !== null, true, "la hoja sigue abierta");
+  assert.equal(await page.$$eval(".hb.nuevo", e => e.length), 2, "dos niveles nuevos en rojo");
+  await page.click('[data-hc="L"]');
+  assert.equal(await page.evaluate(() => F.salud.filter(x => x === "L").length), 1);
+  assert.equal(await page.$$eval(".hb.curado", e => e.length), 1, "el nivel curado queda en gris");
+  assert.equal(await page.evaluate(() => F.sangre), 2, "curar paga 1 Sangre");
+  await foto("25-salud-en-vivo");
+  // «Deshacer» dentro de la hoja
+  await page.click("#hs-deshacer");
+  assert.deepEqual(await page.evaluate(() => [F.salud.join(""), F.sangre]), ["LL", 3]);
+  assert.equal(await page.$$eval(".hb.nuevo,.hb.curado", e => e.length), 0);
+  // al cerrar queda el aviso de Deshacer
+  await page.click('[data-hr="A"]'); await page.click("#hs-listo");
+  assert.equal(await page.$("#hs-body"), null);
+  assert.match(await page.textContent("#undo-txt"), /Salud: \+1 agravado/);
+  assert.equal(await page.isVisible("#undo"), true);
+  await page.click("#undo-btn");
+  assert.equal(await page.evaluate(() => F.salud.join("")), "LL");
+  // Sangre: cantidades rápidas, la hoja sigue abierta
+  await page.evaluate(() => abrirRecurso("sangre"));
+  await page.click('[data-cant="3"]'); await page.click("#rs-recibir");
+  assert.equal(await page.evaluate(() => F.sangre), 6);
+  assert.equal(await page.$$eval(".barra i.nuevo", e => e.length), 3);
+  await page.click('[data-cant="2"]'); await page.click("#rs-gastar");
+  assert.equal(await page.evaluate(() => F.sangre), 4);
+  assert.equal(await page.$$eval(".barra i.gastado", e => e.length), 0, "se gastó parte de lo recién ganado: no queda nada gris respecto de cuando se abrió");
+  await page.click("#rs-deshacer");
+  assert.equal(await page.evaluate(() => F.sangre), 3);
+  await page.click("#rs-gastar");   // 2 gastados desde 3
+  assert.equal(await page.$$eval(".barra i.gastado", e => e.length), 2);
+  await page.evaluate(() => cerrarSheet());   // cerrar de cualquier forma deja el aviso
+  assert.match(await page.textContent("#undo-txt"), /Sangre: 3 → 1/);
+  await page.click("#undo-btn");
+  assert.equal(await page.evaluate(() => F.sangre), 3);
+  await page.evaluate(() => { F.salud = []; F.sangre = 6; guardarFicha(); });
 });
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));

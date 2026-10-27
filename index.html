@@ -84,9 +84,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .d10.spin{animation:spin .5s linear infinite}
 @keyframes spin{50%{transform:rotate(18deg) scale(.92)}}
 @media (prefers-reduced-motion:reduce){.d10.spin,.flash{animation:none}}
-@keyframes entraDer{from{opacity:.35;transform:translateX(28px)}to{opacity:1;transform:none}}
-@keyframes entraIzq{from{opacity:.35;transform:translateX(-28px)}to{opacity:1;transform:none}}
-.desde-der{animation:entraDer .2s ease-out}.desde-izq{animation:entraIzq .2s ease-out}
+@keyframes entraDer{from{opacity:0;transform:translateX(70%)}to{opacity:1;transform:none}}
+@keyframes entraIzq{from{opacity:0;transform:translateX(-70%)}to{opacity:1;transform:none}}
+.desde-der{animation:entraDer .24s cubic-bezier(.2,.8,.3,1)}.desde-izq{animation:entraIzq .24s cubic-bezier(.2,.8,.3,1)}
 @media (prefers-reduced-motion:reduce){.desde-der,.desde-izq{animation:none}}
 .res{font-weight:600;font-size:16.5px}
 .res.good{color:var(--gold)}.res.bad{color:var(--bad)}
@@ -391,6 +391,11 @@ select.mini{height:44px;background:var(--bg);border:1px solid var(--line);border
 .sh-fila{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .barra{display:flex;gap:2px}.barra i{flex:1;height:14px;border-radius:2px;background:var(--line)}.barra i.on{background:var(--blood)}
 .barra.plata i.on{background:var(--plata)}
+.barra i.nuevo{box-shadow:0 0 0 2px var(--extra)}
+.barra i.gastado{background:transparent;box-shadow:inset 0 0 0 2px var(--muted);opacity:.6}
+.hb{display:block}.hb.nuevo .hbox rect{fill:rgba(224,64,64,.2);stroke:var(--bad)}.hb.nuevo .hbox path{stroke:var(--bad)}
+.hb.curado{opacity:.5}.hb.curado .hbox rect,.hb.curado .hbox path{stroke:var(--muted)}
+.chips.cant{display:flex;gap:8px;margin:6px 0 2px}.chips.cant .chip{min-width:48px;justify-content:center}
 .cajas7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
 .cajas7>div{display:flex;flex-direction:column;align-items:center;gap:4px}.cajas7 .num{font-size:16px;color:var(--muted)}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -1613,29 +1618,60 @@ function mostrarPestana(t){
   posFab();
 }
 
-/* Deslizar de lado cambia de pestaña. No da la vuelta: en la primera y en la última no pasa nada. */
+/* Deslizar de lado cambia de pestaña. La pantalla acompaña al dedo; al soltar, sale y entra la siguiente.
+   No da la vuelta: en la primera y en la última el gesto se estira un poco y vuelve. */
 (() => {
-  let ini = null;
+  let ini = null, arrastra = false, ocupado = false, dx = 0;
   const scrollLado = el => { for(let n = el; n && !n.classList.contains("screen") && n !== document.body; n = n.parentElement){ const ox = getComputedStyle(n).overflowX; if((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return true; } return false; };
+  const tabsYActual = () => { const tabs = [...document.querySelectorAll("#tabs button")]; return {tabs, i:tabs.findIndex(b => b.getAttribute("aria-selected") === "true")}; };
+  const pantalla = () => document.querySelector(".screen:not([hidden])");
   document.addEventListener("touchstart", e => {
-    ini = null;
-    if(e.touches.length !== 1 || $("#sheet-root").firstElementChild || $("#tabs").hidden) return;
+    ini = null; arrastra = false;
+    if(ocupado || e.touches.length !== 1 || $("#sheet-root").firstElementChild || $("#tabs").hidden) return;
     const t = e.touches[0], el = e.target;
     if(t.clientX < 24 || t.clientX > innerWidth - 24) return;   // los bordes son del sistema (volver atrás)
     if(el.closest("input,textarea,select,[contenteditable],#composer,.fab") || scrollLado(el)) return;
+    if(tabsYActual().i < 0) return;   // por ejemplo, durante la creación del personaje
     ini = {x:t.clientX, y:t.clientY, t:e.timeStamp};
   }, {passive:true});
-  document.addEventListener("touchend", e => {
+  document.addEventListener("touchmove", e => {
     if(!ini) return;
-    const t = e.changedTouches[0], dx = t.clientX - ini.x, dy = t.clientY - ini.y, dt = e.timeStamp - ini.t; ini = null;
-    if(Math.abs(dx) < 70 || Math.abs(dx) < 1.6 * Math.abs(dy) || dt > 800) return;
-    const tabs = [...document.querySelectorAll("#tabs button")], i = tabs.findIndex(b => b.getAttribute("aria-selected") === "true");
-    if(i < 0) return;   // por ejemplo, durante la creación del personaje
-    const j = i + (dx < 0 ? 1 : -1); if(j < 0 || j >= tabs.length) return;
-    mostrarPestana(tabs[j].dataset.t);
-    const pantalla = document.querySelector(".screen:not([hidden])");
-    if(pantalla){ const c = dx < 0 ? "desde-der" : "desde-izq"; pantalla.classList.add(c); setTimeout(() => pantalla.classList.remove(c), 260); }
-  }, {passive:true});
+    const t = e.touches[0], mx = t.clientX - ini.x, my = t.clientY - ini.y;
+    if(!arrastra){
+      if(Math.abs(my) > 12 && Math.abs(my) > Math.abs(mx)){ ini = null; return; }       // es un desplazamiento vertical
+      if(Math.abs(mx) < 12 || Math.abs(mx) < 1.3 * Math.abs(my)) return;
+      arrastra = true;
+    }
+    e.preventDefault();
+    const {tabs, i} = tabsYActual(), hay = (mx < 0 ? i + 1 < tabs.length : i > 0);
+    dx = hay ? mx : mx * 0.25;   // en las puntas se estira con resistencia
+    const p = pantalla(); if(!p) return;
+    p.style.transition = "none"; p.style.transform = `translateX(${dx}px)`; p.style.opacity = String(Math.max(.4, 1 - Math.abs(dx) / 500));
+  }, {passive:false});
+  const soltar = e => {
+    if(!ini){ return; }
+    const f = ini; ini = null;
+    if(!arrastra) return;
+    arrastra = false;
+    const p = pantalla(), dt = (e.timeStamp || 0) - f.t, rapido = Math.abs(dx) > 40 && Math.abs(dx) / Math.max(1, dt) > 0.5;
+    const {tabs, i} = tabsYActual(), j = i + (dx < 0 ? 1 : -1), hay = j >= 0 && j < tabs.length;
+    const dur = reduce ? 0 : .16;
+    if(!p) return;
+    if(!hay || (Math.abs(dx) < 90 && !rapido)){   // vuelve a su lugar
+      p.style.transition = `transform ${dur + .04}s ease-out, opacity ${dur + .04}s ease-out`; p.style.transform = ""; p.style.opacity = "";
+      setTimeout(() => { p.style.transition = ""; }, (dur + .05) * 1000); return;
+    }
+    ocupado = true;
+    p.style.transition = `transform ${dur}s ease-in, opacity ${dur}s ease-in`; p.style.transform = `translateX(${dx < 0 ? -110 : 110}%)`; p.style.opacity = "0";
+    setTimeout(() => {
+      p.style.transition = ""; p.style.transform = ""; p.style.opacity = "";
+      mostrarPestana(tabs[j].dataset.t);
+      const n = pantalla();
+      if(n){ const c = dx < 0 ? "desde-der" : "desde-izq"; n.classList.add(c); setTimeout(() => n.classList.remove(c), 300); }
+      ocupado = false;
+    }, dur * 1000);
+  };
+  document.addEventListener("touchend", soltar, {passive:true}); document.addEventListener("touchcancel", soltar, {passive:true});
 })();
 
 const ta = $("#msg");
@@ -1644,7 +1680,9 @@ ta.addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey && !ma
 $("#form").addEventListener("submit", e => { e.preventDefault(); if(running) return; const v = ta.value.trim(); if(!v) return; ta.value = ""; ta.style.height = "auto"; narrar(v); });
 
 /* ---------- menú ---------- */
+let alCerrarSheet = null;   // se llama una sola vez cuando la hoja se cierra, de la forma que sea
 function abrirSheet(html, setup){
+  if(alCerrarSheet){ const f = alCerrarSheet; alCerrarSheet = null; f(); }
   const root = $("#sheet-root");
   root.innerHTML = `<div class="sheet-bg"><div class="sheet gut" role="dialog" aria-modal="true">${html}</div></div>`;
   const bg = root.firstElementChild; bg.addEventListener("click", e => { if(e.target === bg) cerrarSheet(); });
@@ -1680,7 +1718,7 @@ function deslizarParaCerrar(hoja, fondo){
   };
   hoja.addEventListener("touchend", soltar); hoja.addEventListener("touchcancel", soltar);
 }
-const cerrarSheet = () => $("#sheet-root").innerHTML = "";
+const cerrarSheet = () => { const f = alCerrarSheet; alCerrarSheet = null; $("#sheet-root").innerHTML = ""; if(f) f(); };
 $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   abrirSheet(`<h2>Menú</h2>
   <div class="sec-lbl">Apariencia</div>
@@ -3393,61 +3431,85 @@ function tocarStat(que){
 const MOTIVOS = {sangre:["Celeridad","Piel de Víbora","Atributo físico","Alimentación","Despertar"],
   fv:["Éxito automático","Resistir un impulso","Ignorar heridas","Disciplina","Naturaleza","Fin de historia"]};
 const RS = {sangre:1, fv:1, motivo:""};
+/* La hoja de Sangre / FV queda abierta: cada gasto o ganancia se aplica al instante y se ve en la barra (anillo = ganado, gris = gastado).
+   «Deshacer» vuelve a como estaba al abrirla; al cerrar queda el aviso de Deshacer de 7 segundos. */
 function abrirRecurso(tipo){
   RS.motivo = "";
+  const SS = {foto:foto(), n:0}, san = tipo === "sangre", nombre = san ? "Sangre" : "Fuerza de Voluntad";
   const pintar = () => {
-    const san = tipo === "sangre", [, reserva, porTurno] = limites();
-    const act = san ? F.sangre : F.fv, max = san ? reserva : F.fv_max, n = RS[tipo];
+    const [, reserva, porTurno] = limites();
+    const act = san ? F.sangre : F.fv, max = san ? reserva : F.fv_max, n = Math.min(RS[tipo], max), antes = san ? SS.foto.F.sangre : SS.foto.F.fv;
+    const pips = Array.from({length:max}, (_, i) => `<i class="${i < act ? "on" : ""}${i >= antes && i < act ? " nuevo" : ""}${i >= act && i < antes ? " gastado" : ""}"></i>`).join("");
     $("#rs-body").innerHTML = `
-      <div class="sh-top"><h2>${san ? "Sangre" : "Fuerza de Voluntad"}</h2><span class="num sh-val">${act}<small>/${max}</small></span></div>
-      <div class="barra ${san ? "" : "plata"}" aria-hidden="true">${Array.from({length:max}, (_,i) => `<i class="${i<act?"on":""}"></i>`).join("")}</div>
+      <div class="sh-top"><h2>${nombre}</h2><span class="num sh-val">${act}<small>/${max}</small></span></div>
+      <div class="barra ${san ? "" : "plata"}" aria-hidden="true">${pips}</div>
       <p class="pen">${san ? `Gasta hasta ${porTurno} por turno · ${hambriento() ? "hambriento" : `hambriento con ${(F.criterios||{}).umbral_hambre ?? 7} o menos`}` : "Cada punto da un éxito automático, resiste un impulso o ignora las heridas un turno."}</p>
+      <div class="chips cant" role="group" aria-label="Cantidad">${[1,2,3,5].filter(v => v <= max).map(v => `<button type="button" class="chip" data-cant="${v}" aria-pressed="${n===v}">${v}</button>`).join("")}</div>
       <div class="stepper"><button type="button" id="rs-menos" aria-label="Uno menos" ${n<=1?"disabled":""}>−</button><b class="num" id="rs-n">${n}</b><button type="button" id="rs-mas" aria-label="Uno más" ${n>=max?"disabled":""}>+</button></div>
       <div class="sh-sec"><span class="pen">Motivo (opcional)</span><div class="chips wrap">${MOTIVOS[tipo].map(m => `<button type="button" class="chip" data-mot="${esc(m)}" aria-pressed="${RS.motivo===m}">${esc(m)}</button>`).join("")}</div></div>
-      <div class="par"><button class="btn ghost" type="button" id="rs-gastar" ${act<n?"disabled":""}>Gastar ${n}</button><button class="btn" type="button" id="rs-recibir" ${act>=max?"disabled":""}>${san ? "Recibir" : "Recuperar"} ${n}</button></div>`;
+      <div class="par"><button class="btn ghost" type="button" id="rs-gastar" ${act<n?"disabled":""}>Gastar ${n}</button><button class="btn" type="button" id="rs-recibir" ${act>=max?"disabled":""}>${san ? "Recibir" : "Recuperar"} ${n}</button></div>
+      <div class="par" style="margin-top:8px"><button class="btn ghost" type="button" id="rs-deshacer" ${SS.n ? "" : "disabled"}>Deshacer</button><button class="btn ghost" type="button" id="rs-listo">Listo</button></div>`;
+    document.querySelectorAll("[data-cant]").forEach(b => b.onclick = () => { RS[tipo] = +b.dataset.cant; pintar(); });
     $("#rs-menos").onclick = () => { RS[tipo] = Math.max(1, n-1); pintar(); };
     $("#rs-mas").onclick = () => { RS[tipo] = Math.min(max, n+1); pintar(); };
     document.querySelectorAll("[data-mot]").forEach(b => b.onclick = () => { RS.motivo = RS.motivo === b.dataset.mot ? "" : b.dataset.mot; pintar(); });
-    const hecho = (texto, medidor, s) => { cerrarSheet(); guardarFicha(); refrescarCabecera(); flash(medidor); anotarMesa(texto); mostrarDeshacer(texto, s);
-      if(!$("#s-juego").hidden) renderJuegoConservando(); };
+    const cambio = (texto, medidor) => { SS.n++; guardarFicha(); refrescarCabecera(); flash(medidor); anotarMesa(texto); if(!$("#s-juego").hidden) renderJuegoConservando(); pintar(); };
     const mot = RS.motivo || "en mesa";
-    $("#rs-gastar").onclick = () => accion(() => { const s = foto();
-      if(san){ const r = gastarSangre(n, mot, true); hecho(`−${n} Sangre (${mot}) · ${r.antes} → ${r.ahora}${n > porTurno ? ` · el límite por turno es ${porTurno}` : ""}`, "m-blood", s); }
-      else { if(F.fv < n) throw new ReglaError(`${F.nombre} tiene ${F.fv} de FV.`); const a = F.fv; F.fv -= n; evento("fv_gastada", {motivo:mot, de:a, a:F.fv, modo:"mesa"}); hecho(`−${n} FV (${mot}) · ${a} → ${F.fv}`, "m-fv", s); } });
-    $("#rs-recibir").onclick = () => accion(() => { const s = foto();
-      if(san){ const a = F.sangre; F.sangre = Math.min(reserva, a + n); evento("sangre_recibida", {motivo:mot, de:a, a:F.sangre, modo:"mesa"}); hecho(`+${F.sangre-a} Sangre (${mot}) · ${a} → ${F.sangre}`, "m-blood", s); }
-      else { const a = F.fv; F.fv = Math.min(F.fv_max, a + n); evento("fv_recuperada", {motivo:mot, de:a, a:F.fv, modo:"mesa"}); hecho(`+${F.fv-a} FV (${mot}) · ${a} → ${F.fv}`, "m-fv", s); } });
+    $("#rs-gastar").onclick = () => accion(() => {
+      if(san){ const r = gastarSangre(n, mot, true); cambio(`−${n} Sangre (${mot}) · ${r.antes} → ${r.ahora}${n > porTurno ? ` · el límite por turno es ${porTurno}` : ""}`, "m-blood"); }
+      else { if(F.fv < n) throw new ReglaError(`${F.nombre} tiene ${F.fv} de FV.`); const a = F.fv; F.fv -= n; evento("fv_gastada", {motivo:mot, de:a, a:F.fv, modo:"mesa"}); cambio(`−${n} FV (${mot}) · ${a} → ${F.fv}`, "m-fv"); } });
+    $("#rs-recibir").onclick = () => accion(() => {
+      if(san){ const a = F.sangre; F.sangre = Math.min(reserva, a + n); evento("sangre_recibida", {motivo:mot, de:a, a:F.sangre, modo:"mesa"}); cambio(`+${F.sangre-a} Sangre (${mot}) · ${a} → ${F.sangre}`, "m-blood"); }
+      else { const a = F.fv; F.fv = Math.min(F.fv_max, a + n); evento("fv_recuperada", {motivo:mot, de:a, a:F.fv, modo:"mesa"}); cambio(`+${F.fv-a} FV (${mot}) · ${a} → ${F.fv}`, "m-fv"); } });
+    $("#rs-deshacer").onclick = () => { UNDO = SS.foto; deshacer(); SS.foto = foto(); SS.n = 0; pintar(); };
+    $("#rs-listo").onclick = cerrarSheet;
   };
   abrirSheet(`<div class="asa" aria-hidden="true"></div><div id="rs-body"></div>`, pintar);
+  alCerrarSheet = () => { const a = san ? SS.foto.F.sangre : SS.foto.F.fv, b = san ? F.sangre : F.fv;
+    if(SS.n && a !== b) mostrarDeshacer(`${nombre}: ${a} → ${b} (${b > a ? "+" : "−"}${Math.abs(b - a)})`, SS.foto); };
 }
 
-const HS = {n:1, t:"L", pagar:true};
+const HS = {pagar:true};
+/* La hoja de Salud queda abierta: cada toque recibe o cura un nivel y se ve en las casillas (rojo = daño nuevo, gris = curado).
+   «Deshacer» vuelve a como estaba al abrirla; al cerrar queda el aviso de Deshacer de 7 segundos. */
+function resumenSalud(f0){
+  const cuenta = (f, t) => f.salud.filter(x => x === t).length;
+  const partes = ["A","L","C"].map(t => { const d = cuenta(F, t) - cuenta(f0, t); return d > 0 ? `+${d} ${TIPO_DANO[t]}` : d < 0 ? `curó ${-d} ${TIPO_DANO[t]}` : ""; }).filter(Boolean);
+  const dS = F.sangre - f0.sangre;
+  return partes.length || dS ? `Salud: ${partes.join(", ") || "sin cambios"}${dS ? ` · ${dS > 0 ? "+" : "−"}${Math.abs(dS)} Sangre` : ""}` : "";
+}
 function abrirSalud(){
+  const SS = {foto:foto(), n:0};
   const pintar = () => {
-    const n = HS.n, t = HS.t, ocupadas = F.salud.length, tras = Math.min(7, ocupadas + n);
-    const cuesta = t === "A" ? 5*n : n, hay = F.salud.filter(x => x === t).length;
-    const previa = ocupadas >= 7 ? "Está Incapacitado: más daño contundente o letal es Letargo; agravado, Muerte Definitiva."
-      : `Con ${n} ${TIPO_DANO[t]}${n>1?"es":""} más quedaría ${SALUDV()[tras-1][0]}. ${EFECTOV()[tras-1]}`;
+    const bef = SS.foto.F.salud, cur = F.salud, tot = SALUDV().length, cuenta = (a, t) => a.filter(x => x === t).length;
+    const nuevos = {}, curados = [];
+    for(const t of ["A","L","C"]){ const d = cuenta(cur, t) - cuenta(bef, t); if(d > 0) nuevos[t] = d; else for(let k = 0; k < -d; k++) curados.push(t); }
+    const hasta = {}; ["A","L","C"].forEach(t => hasta[t] = cur.map((x, i) => x === t ? i : -1).filter(i => i >= 0).pop());
+    const celda = i => { const t = cur[i];
+      if(t) return `<span class="hb ${nuevos[t] && i > hasta[t] - nuevos[t] && i <= hasta[t] ? "nuevo" : ""}">${cajaSalud(t, 40)}</span>`;
+      const g = curados[i - cur.length]; return g ? `<span class="hb curado">${cajaSalud(g, 40)}</span>` : cajaSalud("", 40); };
+    const pen = penalizacion(), efecto = cur.length === 0 ? "Sin heridas. Puede actuar con normalidad." : EFECTOV()[Math.min(cur.length, tot)-1];
+    const hay = t => cuenta(cur, t) > 0, tipos = [["C","/ Contundente"],["L","X Letal"],["A","✱ Agravado"]];
     $("#hs-body").innerHTML = `
-      <div class="sh-top"><h2>Salud</h2><span class="pen">${nivelSalud()}${penalizacion() ? " · "+penDados(penalizacion()) : " · sin penalización"}</span></div>
-      <div class="cajas7" style="grid-template-columns:repeat(${SALUDV().length},minmax(0,1fr))">${SALUDV().map(([nom,p],i) => `<div><span class="vh">${nom}</span>${cajaSalud(F.salud[i], 40)}<span class="num">${p===null ? "✕" : fmtPen(p)}</span></div>`).join("")}</div>
-      <div class="sh-sec"><span class="pen">Tipo de daño</span>
-        <div class="seg3" role="radiogroup" aria-label="Tipo de daño">${[["C","/ Contundente"],["L","X Letal"],["A","✱ Agravado"]].map(([k,l]) => `<button type="button" role="radio" aria-checked="${k===t}" data-ht="${k}">${l}</button>`).join("")}</div></div>
-      <div class="sh-fila"><span class="pen">Niveles</span><div class="stepper chico"><button type="button" id="hs-menos" aria-label="Uno menos" ${n<=1?"disabled":""}>−</button><b class="num">${n}</b><button type="button" id="hs-mas" aria-label="Uno más" ${n>=7?"disabled":""}>+</button></div></div>
-      <label class="chk"><input type="checkbox" id="hs-pagar" ${HS.pagar?"checked":""}> Al curar, pagar con Sangre (${cuesta} punto${cuesta>1?"s":""})</label>
-      <div class="par"><button class="btn ghost" type="button" id="hs-curar" ${hay?"":"disabled"}>Curar ${Math.min(n, hay) || n}</button><button class="btn sangre" type="button" id="hs-recibir">Recibir ${n}</button></div>
-      <p class="pen">${esc(previa)}</p>`;
-    document.querySelectorAll("[data-ht]").forEach(b => b.onclick = () => { HS.t = b.dataset.ht; pintar(); });
-    $("#hs-menos").onclick = () => { HS.n = Math.max(1, n-1); pintar(); };
-    $("#hs-mas").onclick = () => { HS.n = Math.min(7, n+1); pintar(); };
+      <div class="sh-top"><h2>Salud</h2><span class="pen">${nivelSalud()}${pen ? " · "+penDados(pen) : " · sin penalización"}</span></div>
+      <div class="cajas7" style="grid-template-columns:repeat(${tot},minmax(0,1fr))">${SALUDV().map(([nom,p],i) => `<div><span class="vh">${nom}</span>${celda(i)}<span class="num">${p===null ? "✕" : fmtPen(p)}</span></div>`).join("")}</div>
+      <p class="pen">${esc(efecto)}</p>
+      <div class="sh-sec"><span class="pen">Recibir un nivel de daño</span>
+        <div class="seg3" role="group" aria-label="Recibir daño">${tipos.map(([k,l]) => `<button type="button" data-hr="${k}">${l}</button>`).join("")}</div></div>
+      <div class="sh-sec"><span class="pen">Curar un nivel</span>
+        <div class="seg3" role="group" aria-label="Curar daño">${tipos.map(([k,l]) => `<button type="button" data-hc="${k}" ${hay(k) ? "" : "disabled"}>${l}</button>`).join("")}</div></div>
+      <label class="chk"><input type="checkbox" id="hs-pagar" ${HS.pagar?"checked":""}> Al curar, pagar con Sangre (1 por nivel; 5 si es agravado)</label>
+      <div class="par" style="margin-top:8px"><button class="btn ghost" type="button" id="hs-deshacer" ${SS.n ? "" : "disabled"}>Deshacer</button><button class="btn ghost" type="button" id="hs-listo">Listo</button></div>`;
+    const cambio = texto => { SS.n++; guardarFicha(); refrescarCabecera(); flash("m-salud"); anotarMesa(texto); if(!$("#s-juego").hidden) renderJuegoConservando(); pintar(); };
+    document.querySelectorAll("[data-hr]").forEach(b => b.onclick = () => accion(() => { const t = b.dataset.hr; danoDirecto(1, t, "en mesa"); cambio(`Recibe 1 ${TIPO_DANO[t]} · ${nivelSalud()}`); }));
+    document.querySelectorAll("[data-hc]").forEach(b => b.onclick = () => accion(() => { const t = b.dataset.hc, c = curarDirecto(1, t, HS.pagar);
+      cambio(`Cura ${c} ${TIPO_DANO[t]}${HS.pagar ? ` (paga ${t==="A"?5*c:c} Sangre)` : ""} · ${nivelSalud()}`); }));
     $("#hs-pagar").onchange = e => { HS.pagar = e.target.checked; };
-    const hecho = (texto, s) => { cerrarSheet(); guardarFicha(); refrescarCabecera(); flash("m-salud"); anotarMesa(texto); mostrarDeshacer(texto, s);
-      if(!$("#s-juego").hidden) renderJuegoConservando(); };
-    $("#hs-recibir").onclick = () => accion(() => { const s = foto(); danoDirecto(n, t, "en mesa"); hecho(`Recibe ${n} ${TIPO_DANO[t]} · ${nivelSalud()}`, s); });
-    $("#hs-curar").onclick = () => accion(() => { const s = foto(); const c = curarDirecto(n, t, HS.pagar);
-      hecho(`Cura ${c} ${TIPO_DANO[t]}${HS.pagar ? ` (paga ${t==="A"?5*c:c} Sangre)` : ""} · ${nivelSalud()}`, s); });
+    $("#hs-deshacer").onclick = () => { UNDO = SS.foto; deshacer(); SS.foto = foto(); SS.n = 0; pintar(); };
+    $("#hs-listo").onclick = cerrarSheet;
   };
   abrirSheet(`<div class="asa" aria-hidden="true"></div><div id="hs-body"></div>`, pintar);
+  alCerrarSheet = () => { if(!SS.n) return; const t = resumenSalud(SS.foto.F); if(t) mostrarDeshacer(t, SS.foto); };
 }
 function abrirPX(){
   abrirSheet(`<div class="asa" aria-hidden="true"></div>
