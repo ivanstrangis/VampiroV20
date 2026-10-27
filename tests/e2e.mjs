@@ -634,6 +634,21 @@ await prueba("armas especiales: requisito para empuñar y características que s
   assert.match(e2, /no tiene una propiedad/);
 
 });
+await prueba("armas especiales: los dados extra con su propio tipo mezclan el daño (parte letal, parte agravada)", async () => {
+  const r = await page.evaluate(() => {
+    const o = {id:"mezcla_t", nombre:"Daga ardiente", tipo:"arma_cc", dano_fuerza:2, tipo_dano:"L", lugar:"encima", extras:[{id:"e1", nombre:"Fuego", dados:2, tipo_extra:"A"}]};
+    INV.items = INV.items.filter(x => x.id !== o.id); INV.items.push(o); JA[o.id] ||= {dif:"6", out:""};
+    resultadoAtaque(o, tirar(5, 2, {auto:3}), "");
+    const antes = [JA[o.id].dano, JSON.stringify(JA[o.id].danoExtra), bonoEsp(o)];
+    tirarDanoArma(o.id);
+    return {antes, out:JA[o.id].out, info:infoEsp(o)};
+  });
+  assert.deepEqual(r.antes.slice(1), ['{"A":2}', 2]);
+  assert.ok((r.out.match(/class="res good"/g) || []).length >= 2, "debe haber dos tiradas de daño");
+  assert.match(r.out, /daño letal/); assert.match(r.out, /daño agravado \(dados extra\)/);
+  assert.match(r.info, /\+2 dados de daño agravado/);
+  await page.evaluate(() => { INV.items = INV.items.filter(x => x.id !== "mezcla_t"); });
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));

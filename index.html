@@ -793,7 +793,9 @@ const infoExtra = e => {
 const bonoEsp = o => (o.bono_dano||0) + extrasArma(o).filter(extraOn).reduce((a,e) => a + (e.dados||0), 0);
 const tipoEsp = o => [o.tipo_esp, ...extrasArma(o).filter(extraOn).map(e => e.tipo)].filter(Boolean).sort((a,b) => "CLA".indexOf(b) - "CLA".indexOf(a))[0] || "";   // si hay varios, gana el más grave
 const textoEsp = o => [o.material, o.propiedades, ...extrasArma(o).filter(extraOn).map(e => e.texto ? `${e.nombre}: ${e.texto}` : e.nombre)].filter(Boolean).join(" · ");
-const detalleExtra = e => [e.dados ? `+${e.dados} dado${e.dados>1?"s":""}` : "", e.tipo ? TIPO_DANO[e.tipo] : "", e.texto].filter(Boolean).join(", ");
+const detalleExtra = e => [e.dados ? `+${e.dados} dado${e.dados>1?"s":""}${e.tipo_extra ? " de daño " + TIPO_DANO[e.tipo_extra] : ""}` : "", e.tipo ? "todo el daño del arma pasa a " + TIPO_DANO[e.tipo] : "", e.texto].filter(Boolean).join(", ");
+/* Dados extra con su propio tipo: el daño sale «mezclado» (parte del tipo del arma, parte del tipo de la característica). */
+const extraTipado = o => extrasArma(o).filter(e => extraOn(e) && e.tipo_extra && e.dados).reduce((m, e) => (m[e.tipo_extra] = (m[e.tipo_extra] || 0) + e.dados, m), {});
 const infoEsp = o => [o.requisito ? reqTxt(o) : "", o.material, o.bono_dano ? `+${o.bono_dano} dado${o.bono_dano>1?"s":""} de daño` : "", o.tipo_esp ? `daño ${TIPO_DANO[o.tipo_esp]}` : "", o.propiedades,
   ...extrasArma(o).map(infoExtra)].filter(Boolean).join(" · ");
 const togglesEsp = o => extrasArma(o).filter(e => e.condicional).map(e => cumpleConds(e)
@@ -3891,7 +3893,8 @@ function abrirObjeto(id, clase){
         ${(A.extras||[]).map((e,i) => `<div class="ef-bloque">
           <div class="field"><label for="ef-n${i}">Nombre</label><input id="ef-n${i}" data-ef="${i}:nombre" value="${esc(e.nombre||"")}" placeholder="Ej.: Hoja en llamas"></div>
           <div class="field"><label for="ef-t${i}">Qué hace</label><input id="ef-t${i}" data-ef="${i}:texto" value="${esc(e.texto||"")}" placeholder="Ej.: la hoja arde y prende lo que toca"></div>
-          <div class="jrow"><div class="field"><label for="ef-d${i}">Dados de daño extra</label><input id="ef-d${i}" data-ef="${i}:dados" type="number" min="0" max="10" value="${e.dados||0}"></div><div class="field"><label for="ef-y${i}">Tipo de daño</label><select id="ef-y${i}" data-ef="${i}:tipo"><option value="">Sin cambio</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===e.tipo?"selected":""}>${t}</option>`).join("")}</select></div></div>
+          <div class="jrow"><div class="field"><label for="ef-d${i}">Dados de daño extra</label><input id="ef-d${i}" data-ef="${i}:dados" type="number" min="0" max="10" value="${e.dados||0}"></div><div class="field"><label for="ef-z${i}">Tipo de esos dados</label><select id="ef-z${i}" data-ef="${i}:tipo_extra"><option value="">El del arma</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===e.tipo_extra?"selected":""}>${t}</option>`).join("")}</select></div></div>
+          <div class="field"><label for="ef-y${i}">Cambia todo el daño del arma a</label><select id="ef-y${i}" data-ef="${i}:tipo"><option value="">Sin cambio</option>${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===e.tipo?"selected":""}>${t}</option>`).join("")}</select></div>
           <div class="field"><label for="ef-m${i}">Tipo</label><select id="ef-m${i}" data-efm="${i}"><option value="siempre" ${!e.condicional ? "selected" : ""}>Siempre activo</option><option value="mano" ${e.condicional ? "selected" : ""}>Activable</option></select></div>
           <div class="sec-lbl" style="margin-top:8px">Condiciones${condsDe(e).length > 1 ? " (se tienen que cumplir todas)" : ""}</div>
           ${condsDe(e).map((c, j) => `<div class="ef-cond"><div class="field"><label for="ef-c${i}-${j}">${j ? "y" : "Solo si"}: qué se mira</label><select id="ef-c${i}-${j}" data-efc="${i}:${j}:rasgo">${condOpciones(c.rasgo)}</select></div>${condResto(`ef-c${i}-${j}`, c, k => `data-efc="${i}:${j}:${k}"`)}<button type="button" class="btn ghost" data-efcq="${i}:${j}">Quitar esta condición</button></div>`).join("") || '<p class="pen" style="margin:0">Sin condiciones.</p>'}
@@ -3969,7 +3972,7 @@ function abrirObjeto(id, clase){
       const nuevo = JSON.parse(JSON.stringify(A)); nuevo.nombre = nuevo.nombre.trim();
       if(nuevo.propiedades) nuevo.propiedades = nuevo.propiedades.trim();
       ["material","bono_dano","tipo_esp","propiedades"].forEach(k => { if(!nuevo[k]) delete nuevo[k]; });
-      if(nuevo.extras){ nuevo.extras.forEach((e, i) => { e.nombre = (e.nombre || "").trim() || `Propiedad ${i+1}`; e.texto = (e.texto || "").trim(); if(!e.tipo) delete e.tipo; if(!e.dados) delete e.dados;
+      if(nuevo.extras){ nuevo.extras.forEach((e, i) => { e.nombre = (e.nombre || "").trim() || `Propiedad ${i+1}`; e.texto = (e.texto || "").trim(); if(!e.tipo) delete e.tipo; if(!e.dados) delete e.dados; if(!e.tipo_extra || !e.dados) delete e.tipo_extra;
         delete e.cond; if(e.conds && e.conds.length) e.conds.forEach(c => c.valor = Number(c.valor) || 0); else delete e.conds;
         if(!e.condicional){ delete e.condicional; delete e.activo; } else e.activo = !!e.activo; });
         if(!nuevo.extras.length) delete nuevo.extras; }
@@ -4095,7 +4098,7 @@ function resultadoAtaque(o, t, extra){
   const base = cc ? rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + bonoEsp(o) : (Number(o.dano)||0) + bonoEsp(o), masEx = Math.max(t.neto - 1, 0);
   const nd = acierto ? base + masEx : 0;
   const desglose = acierto ? ` (base ${base}${cc ? ` = Fuerza ${rasgo("fuerza")}${bf.dados ? " + Potencia "+bf.dados : ""} + ${o.dano_fuerza||0} del arma${bonoEsp(o) ? " + "+bonoEsp(o)+" especial" : ""}` : `${bonoEsp(o) ? " + "+bonoEsp(o)+" especial" : ""} del arma`}${masEx ? ` + ${masEx} por éxito${masEx>1?"s":""} extra` : ""})` : "";
-  s.dano = acierto ? nd : null; s.danoAuto = acierto && cc ? bf.auto : 0;
+  s.dano = acierto ? nd : null; s.danoAuto = acierto && cc ? bf.auto : 0; s.danoExtra = acierto ? extraTipado(o) : {};
   s.out = `<div class="droll">${dados}</div><div class="res ${acierto?"good":"bad"}">${textoTirada(t)}${acierto ? ` · ${nd} dados de daño${desglose}${s.danoAuto ? ` + ${s.danoAuto} éxito${s.danoAuto>1?"s":""} de Potencia` : ""}` : ""}</div>${extra ? `<p class="pen" style="margin:2px 0 6px">${extra}</p>` : ""}
     ${acierto ? `<button class="btn ghost" type="button" data-jdano="${o.id}" style="margin-top:6px">Tirar daño (${nd} dados)</button>` : ""}`;
 }
@@ -4143,12 +4146,17 @@ async function atacarCC(id){
 }
 async function tirarDanoArma(id){
   const o = INV.items.find(x => x.id === id), s = JA[id]; if(!s?.dano) return;
-  const t = tirar(s.dano, 6, {unosRestan:false, auto:s.danoAuto || 0});
+  const extra = s.danoExtra || {}, nExtra = Object.values(extra).reduce((a, b) => a + b, 0), nBase = Math.max(0, s.dano - nExtra);
+  const tipoBase = tipoEsp(o) ? TIPO_DANO[tipoEsp(o)] : o.tipo === "arma_fuego" ? "letal (contundente contra vampiros, salvo a la cabeza)" : TIPO_DANO[o.tipo_dano || "L"];
+  const grupos = [];
+  if(nBase > 0 || s.danoAuto) grupos.push({t:tirar(nBase, 6, {unosRestan:false, auto:s.danoAuto || 0}), tipo:tipoBase, pot:s.danoAuto || 0});
+  for(const [k, n] of Object.entries(extra)) if(n > 0) grupos.push({t:tirar(n, 6, {unosRestan:false}), tipo:TIPO_DANO[k] + (grupos.length ? " (dados extra)" : ""), pot:0});
   s.out = s.out.replace(/<button[^>]*data-jdano[^>]*>[\s\S]*?<\/button>/, "");
-  const tipo = tipoEsp(o) ? TIPO_DANO[tipoEsp(o)] : o.tipo === "arma_fuego" ? "letal (contundente contra vampiros, salvo a la cabeza)" : TIPO_DANO[o.tipo_dano || "L"];
-  s.out += `<div class="droll">${t.dados.map(v => caraDado(v, 6, false)).join("")}${Array.from({length:s.danoAuto||0}, () => '<div class="d10 auto">POT</div>').join("")}</div><div class="res good">${t.neto} nivel${t.neto===1?"":"es"} de daño ${tipo}</div>${textoEsp(o) ? `<p class="pen" style="margin:2px 0 6px">✦ ${esc(textoEsp(o))}</p>` : ""}`;
-  s.dano = null; s.danoAuto = 0;
-  anotarMesa(`Daño con ${o.nombre}: [${t.dados.join(", ")}]${t.automaticos ? ` + ${t.automaticos} aut. (Potencia)` : ""} → ${t.neto} nivel(es) ${tipo}${textoEsp(o) ? " · arma especial: "+textoEsp(o) : ""}`);
+  s.out += grupos.map(g => `<div class="droll">${g.t.dados.map(v => caraDado(v, 6, false)).join("")}${Array.from({length:g.pot}, () => '<div class="d10 auto">POT</div>').join("")}</div><div class="res good">${g.t.neto} nivel${g.t.neto===1?"":"es"} de daño ${g.tipo}</div>`).join("")
+    + (textoEsp(o) ? `<p class="pen" style="margin:2px 0 6px">✦ ${esc(textoEsp(o))}</p>` : "");
+  s.dano = null; s.danoAuto = 0; s.danoExtra = {};
+  anotarMesa(`Daño con ${o.nombre}: ` + grupos.map(g => `[${g.t.dados.join(", ")}]${g.t.automaticos ? ` + ${g.t.automaticos} aut. (Potencia)` : ""} → ${g.t.neto} nivel(es) ${g.tipo}`).join(" · ")
+    + (textoEsp(o) ? " · arma especial: " + textoEsp(o) : ""));
   renderJuegoConservando();
 }
 
