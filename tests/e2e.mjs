@@ -583,16 +583,23 @@ await prueba("armas especiales: requisito para empuñar y características que s
   await page.click("#ef-add");
   await page.fill('[data-ef="0:nombre"]', "Furia de pura sangre");
   await page.fill('[data-ef="0:dados"]', "2");
-  await page.selectOption('[data-efm="0"]', "auto");
-  await page.selectOption('[data-efc="0:rasgo"]', "humanidad");
-  await page.fill('[data-efc="0:valor"]', "10");
+  await page.click('[data-efca="0"]');                       // una condición: Humanidad ≥ 10
+  await page.fill('[data-efc="0:0:valor"]', "10");
   await page.click("#ef-add");
   await page.fill('[data-ef="1:nombre"]', "Sed de sangre");
   await page.fill('[data-ef="1:dados"]', "1");
-  await page.selectOption('[data-efm="1"]', "auto");
-  await page.selectOption('[data-efc="1:rasgo"]', "salud_pct");
-  await page.selectOption('[data-efc="1:op"]', "<=");
-  await page.fill('[data-efc="1:valor"]', "50");
+  await page.click('[data-efca="1"]');
+  await page.selectOption('[data-efc="1:0:rasgo"]', "salud_pct");
+  await page.selectOption('[data-efc="1:0:op"]', "<=");
+  await page.fill('[data-efc="1:0:valor"]', "50");
+  await page.click("#ef-add");                               // a voluntad, pero solo disponible con DOS condiciones («y»)
+  await page.fill('[data-ef="2:nombre"]', "Pureza");
+  await page.fill('[data-ef="2:dados"]', "3");
+  await page.selectOption('[data-efm="2"]', "mano");
+  await page.click('[data-efca="2"]'); await page.click('[data-efca="2"]');
+  await page.selectOption('[data-efc="2:1:rasgo"]', "sangre");
+  await page.selectOption('[data-efc="2:1:op"]', "<=");
+  await page.fill('[data-efc="2:1:valor"]', "5");
   await foto("19-arma-condiciones");
   await page.click("#ob-ok");
   const id = await page.evaluate(() => INV.items.find(o => o.nombre === "Hacha rúnica").id);
@@ -604,18 +611,28 @@ await prueba("armas especiales: requisito para empuñar y características que s
   await page.evaluate(id => { INV.items.find(x => x.id === id).forzada = true; }, id);
   assert.equal(await empuna(), "");
   await page.evaluate(id => { INV.items.find(x => x.id === id).forzada = false; }, id);
-  // condiciones automáticas
-  const bono = (hum, salud) => page.evaluate(([id, hum, salud]) => { const f0 = [F.humanidad, F.salud]; F.humanidad = hum; F.salud = salud;
-    const r = [bonoEsp(INV.items.find(x => x.id === id)), valorCond("salud_pct")]; [F.humanidad, F.salud] = f0; return r; }, [id, hum, salud]);
-  assert.deepEqual(await bono(7, []), [0, 100], "ninguna se cumple");
-  assert.deepEqual((await bono(10, []))[0], 2, "Humanidad 10 activa la primera");
-  assert.deepEqual((await bono(7, ["L", "L", "L", "L"])), [1, 43], "con menos del 50% de salud se activa la segunda");
-  assert.deepEqual((await bono(10, ["L", "L", "L", "L"]))[0], 3, "se suman");
+  assert.deepEqual((await o()).extras[2].conds.map(c => c.rasgo), ["humanidad", "sangre"]);
+  await page.evaluate(id => { INV.items.find(x => x.id === id).extras[2].activo = true; }, id);   // «Pureza» prendida a voluntad
+  const bono = (hum, salud, sangre) => page.evaluate(([id, hum, salud, sangre]) => { const f0 = [F.humanidad, F.salud, F.sangre]; F.humanidad = hum; F.salud = salud; F.sangre = sangre;
+    const r = [bonoEsp(INV.items.find(x => x.id === id)), valorCond("salud_pct")]; [F.humanidad, F.salud, F.sangre] = f0; return r; }, [id, hum, salud, sangre]);
+  assert.deepEqual(await bono(7, [], 6), [0, 100], "ninguna se cumple");
+  assert.equal((await bono(10, [], 6))[0], 2, "Humanidad 10 activa la primera; Pureza pide también Sangre ≤ 5");
+  assert.equal((await bono(10, [], 5))[0], 5, "con las dos condiciones de Pureza (y), se suma");
+  assert.equal((await bono(7, [], 5))[0], 0, "con una sola de las dos condiciones no alcanza");
+  assert.deepEqual(await bono(7, ["L", "L", "L", "L"], 6), [1, 43], "con menos del 50% de salud se activa la segunda");
+  assert.equal((await bono(10, ["L", "L", "L", "L"], 6))[0], 3, "se suman");
   assert.match(await page.evaluate(() => contexto()), /Requiere Fuerza ≥ 9 \(NO lo cumple/);
-  // el Narrador no puede activar a mano una que depende de la ficha
+  assert.match(await page.evaluate(() => contexto()), /Pureza \(no disponible: pide Humanidad ≥ 10 y Sangre actual ≤ 5/);
+  assert.match(await page.textContent("#s-inv"), /Pureza: pide Humanidad ≥ 10 y Sangre actual ≤ 5/, "el interruptor aparece bloqueado y dice qué pide");
+  // el Narrador no puede activar «Pureza» si no se cumplen las condiciones, ni activar a mano una que depende solo de la ficha
   const e = await page.evaluate(async () => { turnoActual = { agregar() { return {}; }, cortar() {} };
-    try { await herramientas().find(x => x.name === "inventario").execute({ accion: "activar", nombre: "hacha runica", propiedad: "furia" }); return ""; } catch (x) { return x.message; } });
-  assert.match(e, /no tiene propiedades condicionales/);
+    const t = herramientas().find(x => x.name === "inventario");
+    try { await t.execute({ accion: "activar", nombre: "hacha runica", propiedad: "pureza" }); return ""; } catch (x) { return x.message; } });
+  assert.match(e, /no se puede activar ahora: pide Humanidad ≥ 10 y Sangre actual ≤ 5/);
+  const e2 = await page.evaluate(async () => { const t = herramientas().find(x => x.name === "inventario");
+    try { await t.execute({ accion: "activar", nombre: "hacha runica", propiedad: "furia" }); return ""; } catch (x) { return x.message; } });
+  assert.match(e2, /no tiene una propiedad/);
+
 });
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
