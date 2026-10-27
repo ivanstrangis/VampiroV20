@@ -3757,14 +3757,14 @@ function posFab(){
 }
 function caraRapida(d, i){
   const cls = d.desc ? "gris" : d.v === 1 ? "uno" : (d.v === 10 && !d.usado) ? "cero" : "";
-  return `<span class="drw ${d.desc ? "anulado" : d.extra ? "extra" : ""}"><button type="button" class="d10 dr ${cls}" data-dr="${i}" aria-label="Dado ${d.v === 10 ? 0 : d.v}${d.extra ? ", extra" : ""}${d.desc ? ", descartado" : ""}">${d.v === 10 ? 0 : d.v}</button></span>`;
+  return `<span class="drw ${d.desc ? "anulado" : d.extra ? "extra" : ""}"><button type="button" class="d10 dr ${cls}" data-dr="${i}" aria-label="Dado ${d.v}${d.extra ? ", extra" : ""}${d.desc ? ", descartado" : ""}">${d.v}</button></span>`;
 }
 function pintarRapida(){
   const caja = $("#dr-res"); if(!caja) return;
   if(!DR.dados.length){ caja.innerHTML = ""; return; }
   const vivos = DR.dados.filter(d => !d.desc).length, extras = DR.dados.filter(d => d.extra).length;
   caja.innerHTML = `<div class="droll">${DR.dados.map(caraRapida).join("")}</div>
-    <p class="pen" style="margin:0">${DR.dados.length} dado${DR.dados.length>1?"s":""}${extras ? ` (${extras} extra)` : ""} · ${vivos} sin descartar. Tocá un 1 para descartar el más alto y un 0 para tirar otro dado, o usá los botones de arriba.</p>`;
+    <p class="pen" style="margin:0">${DR.dados.length} dado${DR.dados.length>1?"s":""}${extras ? ` (${extras} extra)` : ""} · ${vivos} sin descartar. Tocá un 1 para descartar el más alto y un 10 para tirar otro dado, o usá los botones de arriba.</p>`;
   caja.querySelectorAll("[data-dr]").forEach(b => b.onclick = () => tocarRapido(+b.dataset.dr));
   estadoAutos();
 }
@@ -3812,7 +3812,7 @@ async function tirarRapido(){
 function abrirDadoRapido(){
   abrirSheet(`<h2>Tirar dados</h2>
     <div class="dice-actions"><div class="fb"><button type="button" id="dr-menos" aria-label="Un dado menos">−</button><b id="dr-n" class="num" style="font-size:24px;min-width:34px">${DR.n}</b><button type="button" id="dr-mas" aria-label="Un dado más">+</button><span class="pen">dados</span></div>
-      <div class="dr-der"><button type="button" class="drauto uno" id="dr-unos" aria-label="Aplicar todos los 1" title="Aplicar los 1" disabled>1</button><button type="button" class="drauto cero" id="dr-dieces" aria-label="Repetir todos los 10" title="Repetir los 10" disabled>0</button>
+      <div class="dr-der"><button type="button" class="drauto uno" id="dr-unos" aria-label="Aplicar todos los 1" title="Aplicar los 1" disabled>1</button><button type="button" class="drauto cero" id="dr-dieces" aria-label="Repetir todos los 10" title="Repetir los 10" disabled>10</button>
       <button class="btn" type="button" id="dr-tirar">Tirar</button></div></div>
     <div id="dr-res" style="margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><button class="btn ghost" type="button" id="dr-x">Cerrar</button></div>`, () => {

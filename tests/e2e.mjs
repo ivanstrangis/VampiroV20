@@ -649,6 +649,15 @@ await prueba("armas especiales: los dados extra con su propio tipo mezclan el da
   assert.match(r.info, /\+2 dados de daño agravado/);
   await page.evaluate(() => { INV.items = INV.items.filter(x => x.id !== "mezcla_t"); });
 });
+await prueba("tirar dados: el dado más alto se ve como 10, nunca como 0", async () => {
+  await page.evaluate(() => abrirDadoRapido());
+  await page.evaluate(() => { DR.dados = [{v:10, desc:false, par:null, usado:false, extra:false}, {v:7, desc:false, par:null, usado:false, extra:false}, {v:1, desc:false, par:null, usado:false, extra:false}]; pintarRapida(); });
+  assert.deepEqual(await page.$$eval("#dr-res .d10", els => els.map(e => e.textContent)), ["10", "7", "1"]);
+  assert.equal((await page.textContent("#dr-dieces")).trim(), "10");
+  assert.doesNotMatch(await page.textContent("#dr-res"), /un 0|Dado 0/);
+  await foto("22-dados-rapidos");
+  await page.evaluate(() => cerrarSheet());
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));
