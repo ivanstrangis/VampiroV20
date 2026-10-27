@@ -738,6 +738,38 @@ await prueba("menús: arrastrar hacia abajo estando arriba de todo cierra la hoj
   await deslizar(c.x, c.y, c.y + 300);
   assert.equal(await page.$("#mi-x"), null, "el menú principal debía cerrarse");
 });
+await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las puntas", async () => {
+  const cdp = await ctx.newCDPSession(page);
+  const lado = async (dx) => {
+    const x0 = dx < 0 ? 300 : 90, y = 400;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y }] });
+    for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + dx * i / 8, y: y + 4 }] }); await page.waitForTimeout(16); }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(120);
+  };
+  const actual = () => page.$eval('#tabs [aria-selected="true"]', b => b.dataset.t);
+  await page.evaluate(() => { cerrarSheet(); mostrarPestana("chat"); });
+  assert.equal(await actual(), "chat");
+  await lado(-200); assert.equal(await actual(), "ficha");
+  await lado(-200); assert.equal(await actual(), "inv");
+  if (process.env.DBG) console.log(await page.evaluate(() => { const el = document.elementFromPoint(300, 400), out = []; for (let n = el; n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); out.push(n.tagName + "." + n.className + " ox=" + cs.overflowX + " sw=" + n.scrollWidth + " cw=" + n.clientWidth); } return out.join(" | "); }));
+  await lado(-200); assert.equal(await actual(), "notas");
+  await lado(-200); assert.equal(await actual(), "notas", "en la última pestaña no da la vuelta");
+  await lado(200); assert.equal(await actual(), "inv");
+  await lado(200); assert.equal(await actual(), "ficha");
+  await lado(200); assert.equal(await actual(), "chat");
+  await lado(200); assert.equal(await actual(), "chat", "en la primera pestaña no da la vuelta");
+  // un gesto más vertical que horizontal no cambia de pestaña
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 200, y: 300 }] });
+  for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 200 - 10 * i, y: 300 + 40 * i }] }); await page.waitForTimeout(16); }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(120);
+  assert.equal(await actual(), "chat");
+  // con un menú abierto no cambia de pestaña
+  await page.evaluate(() => abrirSheet("<h2>x</h2>", () => {}));
+  await lado(-200); assert.equal(await actual(), "chat");
+  await page.evaluate(() => cerrarSheet());
+});
 await prueba("modelos de armas guardados: aparecen en «Otros modelos», ocultan lo especial en los básicos y viajan en la exportación y el respaldo", async () => {
   await page.evaluate(() => mostrarPestana("inv"));
   await page.evaluate(() => abrirObjeto(null, "cc"));
