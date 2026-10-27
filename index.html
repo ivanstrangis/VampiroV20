@@ -834,19 +834,19 @@ function usarPoder(disciplina, nivel, poder, sangre=0, fv=0){
 /* ---------- inventario: lo que lleva encima y lo guardado en cada refugio ---------- */
 const ENCIMA = "encima";
 const refugios = () => INV.refugios || [];
-const nombreLugar = l => l === ENCIMA ? "encima" : (refugios().find(r => r.id === l)?.nombre || l);
+const nombreLugar = l => l === ENCIMA ? "equipado" : (refugios().find(r => r.id === l)?.nombre || l);
 const encima = () => INV.items.filter(o => (o.lugar || ENCIMA) === ENCIMA);
 function buscarObjeto(nombre, lista = INV.items){
   const b = norm(nombre);
   return lista.find(o => o.id === b || norm(o.nombre).includes(b) || b.includes(norm(o.nombre)));
 }
-// Para USAR algo, tiene que llevarlo encima. Si está guardado en un refugio, el motor lo dice.
+// Para USAR algo, tiene que tenerlo equipado. Si está guardado en un refugio, el motor lo dice.
 function exigirObjeto(nombre){
   const o = buscarObjeto(nombre, encima());
   if(o) return o;
   const guardado = buscarObjeto(nombre);
-  if(guardado) throw new ReglaError(`${F.nombre} no lleva encima «${guardado.nombre}»: está guardado en ${nombreLugar(guardado.lugar)}.`);
-  throw new ReglaError(`${F.nombre} no tiene «${nombre}». Lleva encima: ${encima().map(x => x.nombre).join(", ") || "nada"}.`);
+  if(guardado) throw new ReglaError(`${F.nombre} no tiene equipado «${guardado.nombre}»: está guardado en ${nombreLugar(guardado.lugar)}.`);
+  throw new ReglaError(`${F.nombre} no tiene «${nombre}». Tiene equipado: ${encima().map(x => x.nombre).join(", ") || "nada"}.`);
 }
 function buscarRefugio(nombre){
   const b = norm(nombre);
@@ -859,7 +859,7 @@ function moverObjeto(nombre, destino){
   if(!o) throw new ReglaError(`${F.nombre} no tiene «${nombre}».`);
   const a = destino === ENCIMA ? ENCIMA : buscarRefugio(destino).id;
   const de = o.lugar || ENCIMA;
-  if(de === a) throw new ReglaError(`«${o.nombre}» ya está ${a === ENCIMA ? "encima" : "en " + nombreLugar(a)}.`);
+  if(de === a) throw new ReglaError(`«${o.nombre}» ya está ${a === ENCIMA ? "equipado" : "en " + nombreLugar(a)}.`);
   o.lugar = a;
   evento("objeto_movido", {objeto:o.id, de, a});
   return {objeto:o.nombre, de:nombreLugar(de), a:nombreLugar(a)};
@@ -925,7 +925,7 @@ function recargar(arma){
   const c = encima().filter(x => x.tipo === "cargador" && x.para === o.id && (x.balas||0) > 0).sort((a,b) => b.balas - a.balas)[0];
   if(!c){
     const lejos = INV.items.find(x => x.tipo === "cargador" && x.para === o.id && (x.balas||0) > 0);
-    throw new ReglaError(lejos ? `El cargador de repuesto está guardado en ${nombreLugar(lejos.lugar)}, no encima.` : `${F.nombre} no tiene cargadores de repuesto para «${o.nombre}».`);
+    throw new ReglaError(lejos ? `El cargador de repuesto está guardado en ${nombreLugar(lejos.lugar)}, no equipado.` : `${F.nombre} no tiene cargadores de repuesto para «${o.nombre}».`);
   }
   if(o.mecanismo === "revolver"){   // carga rápida: se cambia el contenido del tambor
     const viejo = o.tambor; o.tambor = Math.min(c.balas, o.capacidad_tambor); c.balas = viejo; normArma(o);
@@ -1100,7 +1100,7 @@ CÓMO NARRAR
 
 REGLAS (el motor de reglas es la única fuente de verdad)
 - Nunca inventes números, tiradas, Sangre, daño ni objetos. Todo cambio pasa por las herramientas.
-- Antes de que el personaje use un objeto, llamá a usar_objeto: si no lo tiene o lo dejó guardado en un refugio, el motor lo rechaza; narrá la corrección con amabilidad. Solo puede usar lo que lleva encima.
+- Antes de que el personaje use un objeto, llamá a usar_objeto: si no lo tiene o lo dejó guardado en un refugio, el motor lo rechaza; narrá la corrección con amabilidad. Solo puede usar lo que tiene equipado.
 - Si deja o retira cosas en un refugio, usá inventario con guardar o retirar (solo si está físicamente en ese refugio). Si paga o cobra, usá dinero con el monto en pesos.
 - Antes de usar una Disciplina, llamá a usar_poder con su nivel y costo. Si no la tiene, no ocurre.
 - Si la acción del jugador tiene un resultado incierto, pedí una tirada con tirada_jugador y TERMINÁ tu mensaje describiendo la tensión del momento: el jugador va a tirar y vas a recibir el resultado como un mensaje entre [corchetes]. No narres el desenlace antes del resultado.
@@ -1479,7 +1479,7 @@ function renderInv(){
     return `<section class="blk refugio"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">${esc(r.nombre)}</h2>${mesa ? `<button class="btn ghost" type="button" data-ref="${esc(r.id)}" style="padding:4px 10px">Editar</button>` : ""}</div>${r.descripcion?`<p class="pen" style="margin:6px 0 0">${esc(r.descripcion)}</p>`:""}${r.notas?`<p class="pen" style="margin:6px 0 0;white-space:pre-wrap">${esc(r.notas)}</p>`:""}<div style="margin-top:8px">${hay.map(it).join("") || '<p class="pen">Nada guardado.</p>'}</div></section>`; }).join("");
   $("#s-inv").innerHTML = (mesa ? `<section class="blk"><div class="barra3 b4"><button class="btn ghost" type="button" data-nuevo="fuego">+ Arma de fuego</button><button class="btn ghost" type="button" data-nuevo="cc">+ Cuerpo a cuerpo</button><button class="btn ghost" type="button" data-nuevo="objeto">+ Objeto</button></div><p class="pen" style="margin:8px 0 0">Tocá el nombre de un objeto para editarlo.</p></section>` : "") +
     `<div class="money"><span class="mlbl">Dinero</span><span class="num">${pesos(INV.dinero)}</span>${mesa ? '<button class="btn ghost" type="button" id="inv-din" style="padding:4px 10px">Editar</button>' : ""}</div>
-    <section class="blk"><h2>Encima</h2><div class="sec-lbl">Armas</div>${armas.map(it).join("")||'<p class="pen">—</p>'}<div class="sec-lbl" style="margin-top:14px">Equipo</div>${resto.map(it).join("")||'<p class="pen">—</p>'}</section>
+    <section class="blk"><h2>Equipado</h2><div class="sec-lbl">Armas</div>${armas.map(it).join("")||'<p class="pen">—</p>'}<div class="sec-lbl" style="margin-top:14px">Equipo</div>${resto.map(it).join("")||'<p class="pen">—</p>'}</section>
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><div class="sec-lbl" style="margin:0">Refugios</div>${mesa ? '<button class="btn ghost" type="button" id="ref-nuevo">+ Refugio</button>' : ""}</div>${refs || '<p class="pen">No tiene refugios.</p>'}`;
   if(mesa){
     document.querySelectorAll("[data-ref]").forEach(b => b.onclick = () => abrirRefugio(b.dataset.ref));
@@ -2092,10 +2092,10 @@ function renderWz(){
     const [, reserva] = GEN[generacionW()];
     const lim = limiteRecursos();
     html = head("Toques finales", "Cómo se ve, dónde duerme y con qué arranca. Al final, el Narrador revisa que sea coherente.") +
-      `<div class="clan-detail" style="margin:0 0 12px">${esc(lim.texto)}<br>Como referencia: hasta ${pesos(lim.dinero)} y unos ${lim.equipo} objetos encima. El Narrador decide si lo que cargues es válido.</div>` +
+      `<div class="clan-detail" style="margin:0 0 12px">${esc(lim.texto)}<br>Como referencia: hasta ${pesos(lim.dinero)} y unos ${lim.equipo} objetos equipados. El Narrador decide si lo que cargues es válido.</div>` +
       `<div class="field"><label for="w-desc">Descripción</label><textarea id="w-desc" placeholder="Aspecto, ropa, un detalle que lo delate">${esc(W.desc)}</textarea></div>
       <div class="field"><label for="w-refugio">Refugios (uno por línea; dejalo vacío si no tiene ninguno)</label><textarea id="w-refugio" placeholder="Un PH sin ventanas en Boedo&#10;Un depósito en Barracas">${esc(W.refugio)}</textarea></div>
-      <div class="field"><label for="w-equipo">Equipo que lleva encima (uno por línea)</label><textarea id="w-equipo" placeholder="Celular&#10;Navaja&#10;Llaves del auto">${esc(W.equipo)}</textarea></div>
+      <div class="field"><label for="w-equipo">Equipo con el que empieza, ya equipado (uno por línea)</label><textarea id="w-equipo" placeholder="Celular&#10;Navaja&#10;Llaves del auto">${esc(W.equipo)}</textarea></div>
       <div class="field"><label for="w-dinero">Dinero en pesos</label><input id="w-dinero" type="number" min="0" step="1000" value="${W.dinero||0}"></div>
       <div class="cat"><div class="cat-h"><b>Sangre inicial</b><span class="pen">1d10${totalRasgo("trasfondo","dominio") ? " + "+totalRasgo("trasfondo","dominio")+" por Dominio" : ""} · reserva máx. ${reserva}</span></div>
         <div class="dice-actions"><div class="droll" id="w-dado" style="margin:4px 0">${W.sangre?`<div class="d10 hit">${W.sangre}</div>`:'<div class="d10">?</div>'}</div>
@@ -3699,7 +3699,7 @@ function abrirObjeto(id, clase){
   if(A.tipo === "arma_fuego"){ normArma(A); if(A.mecanismo === "revolver"){ A.cargador = A.tambor; A.capacidad_cargador = A.capacidad_tambor; } }
   let modSel = "", nomAuto = "";  // modelo elegido y el nombre que puso solo, para poder cambiarlo si elige otro modelo
   let reps = o ? cargadoresDe(o.id).map(c => ({id:c.id, balas:c.balas, lugar:c.lugar || ENCIMA})) : [];
-  const lugares = () => `<option value="${ENCIMA}" ${A.lugar===ENCIMA?"selected":""}>Encima</option>` + refugios().map(r => `<option value="${esc(r.id)}" ${A.lugar===r.id?"selected":""}>${esc(r.nombre)}</option>`).join("");
+  const lugares = () => `<option value="${ENCIMA}" ${A.lugar===ENCIMA?"selected":""}>Equipado</option>` + refugios().map(r => `<option value="${esc(r.id)}" ${A.lugar===r.id?"selected":""}>${esc(r.nombre)}</option>`).join("");
   const num = (id, lab_, v, min, max) => `<div class="field"><label for="${id}">${lab_}</label><input id="${id}" type="number" min="${min}" max="${max}" value="${v}"></div>`;
   const pintar = () => {
     const fuego = A.tipo === "arma_fuego", cc = A.tipo === "arma_cc", rev = A.mecanismo === "revolver";
@@ -3821,10 +3821,10 @@ function abrirRefugio(id){
     <div class="row">${r ? '<button class="btn ghost" type="button" id="rf-del" style="margin-right:auto">Borrar</button>' : ""}<button class="btn ghost" type="button" id="rf-x">Cancelar</button><button class="btn" type="button" id="rf-ok">Guardar</button></div>`, () => {
     $("#rf-x").onclick = cerrarSheet;
     const del = $("#rf-del"); if(del) del.onclick = () => {
-      if(!del.dataset.ok){ del.dataset.ok = "1"; del.textContent = hay ? `Tocá de nuevo: ${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Encima` : "Tocá de nuevo para borrar"; return; }
+      if(!del.dataset.ok){ del.dataset.ok = "1"; del.textContent = hay ? `Tocá de nuevo: ${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Equipado` : "Tocá de nuevo para borrar"; return; }
       INV.items.forEach(o => { if(o.lugar === r.id) o.lugar = ENCIMA; });
       INV.refugios = refugios().filter(x => x.id !== r.id);
-      evento("refugio_borrado", {refugio:r.id, nombre:r.nombre, objetos_a_encima:hay}); anotarMesa(`Refugio: se borra ${r.nombre}${hay ? ` (${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Encima)` : ""}`);
+      evento("refugio_borrado", {refugio:r.id, nombre:r.nombre, objetos_a_encima:hay}); anotarMesa(`Refugio: se borra ${r.nombre}${hay ? ` (${hay} objeto${hay === 1 ? "" : "s"} pasa${hay === 1 ? "" : "n"} a Equipado)` : ""}`);
       guardarInv(); cerrarSheet(); renderInv(); };
     $("#rf-ok").onclick = () => {
       const nombre = $("#rf-n").value.trim();
