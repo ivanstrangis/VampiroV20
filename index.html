@@ -3672,6 +3672,7 @@ function abrirObjeto(id, clase){
     : clase === "cc" ? {tipo:"arma_cc", nombre:"", dano_fuerza:1, tipo_dano:"L"} : {tipo:"equipo", nombre:"", nota:""});
   A.lugar ||= ENCIMA;
   if(A.tipo === "arma_fuego"){ normArma(A); if(A.mecanismo === "revolver"){ A.cargador = A.tambor; A.capacidad_cargador = A.capacidad_tambor; } }
+  let modSel = "", nomAuto = "";  // modelo elegido y el nombre que puso solo, para poder cambiarlo si elige otro modelo
   let reps = o ? cargadoresDe(o.id).map(c => ({id:c.id, balas:c.balas, lugar:c.lugar || ENCIMA})) : [];
   const lugares = () => `<option value="${ENCIMA}" ${A.lugar===ENCIMA?"selected":""}>Encima</option>` + refugios().map(r => `<option value="${esc(r.id)}" ${A.lugar===r.id?"selected":""}>${esc(r.nombre)}</option>`).join("");
   const num = (id, lab_, v, min, max) => `<div class="field"><label for="${id}">${lab_}</label><input id="${id}" type="number" min="${min}" max="${max}" value="${v}"></div>`;
@@ -3679,7 +3680,7 @@ function abrirObjeto(id, clase){
     const fuego = A.tipo === "arma_fuego", cc = A.tipo === "arma_cc", rev = A.mecanismo === "revolver";
     $("#ob-body").innerHTML = `
       <div class="field"><label for="ob-n">Nombre</label><input id="ob-n" value="${esc(A.nombre)}" placeholder="${fuego ? "Ej.: Pistola 9 mm del templo" : cc ? "Ej.: Machete de trekking" : "Ej.: Linterna táctica"}"></div>
-      ${fuego ? `<div class="field"><label for="ob-mod">Modelo (completa los datos del manual)</label><select id="ob-mod"><option value="">Personalizada</option>${MODELOS_FUEGO.map(m => `<option value="${m.k}">${esc(m.n)}</option>`).join("")}</select></div>
+      ${fuego ? `<div class="field"><label for="ob-mod">Modelo (completa los datos del manual)</label><select id="ob-mod"><option value="">Personalizada</option>${MODELOS_FUEGO.map(m => `<option value="${m.k}" ${m.k===modSel?"selected":""}>${esc(m.n)}</option>`).join("")}</select></div>
         <div class="jrow">${num("ob-dano","Daño",A.dano,1,15)}${num("ob-alc","Alcance (m)",A.alcance,1,999)}</div>
         <div class="jrow">${num("ob-cad","Cadencia",A.cadencia,1,10)}<div class="field"><label for="ob-mec">Mecanismo</label><select id="ob-mec">${Object.entries(MECANISMO).map(([k,t]) => `<option value="${k}" ${k===A.mecanismo?"selected":""}>${t}</option>`).join("")}</select></div></div>
         <label class="chk"><input type="checkbox" id="ob-raf" ${A.rafaga?"checked":""}> Permite ráfaga y automático</label>
@@ -3689,7 +3690,7 @@ function abrirObjeto(id, clase){
         <div class="sec-lbl" style="margin-top:12px">${rev ? "Cargas de repuesto" : "Cargadores de repuesto"}</div>
         ${reps.map((r,i) => `<div class="arow"><span>Repuesto ${i+1}</span><span class="fb"><input type="number" class="rep-n" data-rep="${i}" min="0" max="${A.capacidad_cargador}" value="${r.balas}" aria-label="Balas del repuesto ${i+1}"><small>balas</small><button type="button" data-repq="${i}" aria-label="Quitar repuesto">×</button></span></div>`).join("") || '<p class="pen" style="margin:0">Ninguno.</p>'}
         <button class="btn ghost" type="button" id="ob-rep" style="margin-top:6px">Agregar ${rev ? "carga" : "cargador"} lleno</button>`
-      : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc"><option value="">Personalizada</option>${MODELOS_CC.map(m => `<option value="${m.k}">${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})</option>`).join("")}</select></div>
+      : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc"><option value="">Personalizada</option>${MODELOS_CC.map(m => `<option value="${m.k}" ${m.k===modSel?"selected":""}>${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})</option>`).join("")}</select></div>
         <div class="jrow">${num("ob-f","Daño: Fuerza +",A.dano_fuerza,0,6)}<div class="field"><label for="ob-td">Tipo de daño</label><select id="ob-td">${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_dano?"selected":""}>${t}</option>`).join("")}</select></div></div>`
       : `<div class="field"><label for="ob-nota">Nota</label><input id="ob-nota" value="${esc(A.nota||"")}" placeholder="Para qué sirve, de quién es…"></div>`}
       <div class="field" style="margin-top:10px"><label for="ob-l">Dónde está</label><select id="ob-l">${lugares()}</select></div>
@@ -3704,11 +3705,11 @@ function abrirObjeto(id, clase){
     val("ob-f", e => A.dano_fuerza = Math.max(0, +e.value || 0)); val("ob-td", e => A.tipo_dano = e.value);
     val("ob-nota", e => A.nota = e.value); val("ob-l", e => A.lugar = e.value);
     const mec = $("#ob-mec"); if(mec) mec.onchange = e => { A.mecanismo = e.target.value; pintar(); };
-    const mod = $("#ob-mod"); if(mod) mod.onchange = e => { const m = MODELOS_FUEGO.find(x => x.k === e.target.value); if(!m) return;
+    const mod = $("#ob-mod"); if(mod) mod.onchange = e => { const m = MODELOS_FUEGO.find(x => x.k === e.target.value); modSel = m ? m.k : ""; if(!m) return;
       Object.assign(A, {dano:m.dano, alcance:m.alcance, cadencia:m.cadencia, mecanismo:m.mec, capacidad_cargador:m.cap, cargador:m.cap, recamara: m.mec === "revolver" ? 0 : 1, rafaga:!!m.rafaga});
-      if(!A.nombre.trim()) A.nombre = m.n; pintar(); };
-    const modc = $("#ob-modc"); if(modc) modc.onchange = e => { const m = MODELOS_CC.find(x => x.k === e.target.value); if(!m) return;
-      A.dano_fuerza = m.f; A.tipo_dano = m.t; if(!A.nombre.trim()) A.nombre = m.n; pintar(); };
+      if(!A.nombre.trim() || A.nombre === nomAuto) A.nombre = nomAuto = m.n; pintar(); };
+    const modc = $("#ob-modc"); if(modc) modc.onchange = e => { const m = MODELOS_CC.find(x => x.k === e.target.value); modSel = m ? m.k : ""; if(!m) return;
+      A.dano_fuerza = m.f; A.tipo_dano = m.t; if(!A.nombre.trim() || A.nombre === nomAuto) A.nombre = nomAuto = m.n; pintar(); };
     document.querySelectorAll("[data-rep]").forEach(i => i.oninput = e => reps[+i.dataset.rep].balas = Math.max(0, +e.target.value || 0));
     document.querySelectorAll("[data-repq]").forEach(b => b.onclick = () => { reps.splice(+b.dataset.repq, 1); pintar(); });
     const addr = $("#ob-rep"); if(addr) addr.onclick = () => { reps.push({id:null, balas:A.capacidad_cargador, lugar:A.lugar}); pintar(); };
