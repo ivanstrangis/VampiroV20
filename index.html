@@ -491,6 +491,7 @@ select.mini,.field input,.field select,.field textarea,.mydsel,.cat-h select,.re
 .esp-fila{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:10px;align-items:center;padding:4px 0}
 .esp-fila .tras-det{margin:0;height:40px}
 .tog.esp[aria-pressed="true"]{background:#2e6b41;border-color:#2e6b41;color:#fff}
+.tog.circ{width:46px;min-width:46px;padding:0;border-radius:50%;display:grid;place-items:center;font-weight:600;line-height:1}
 .blk.sinfondo{background:transparent;box-shadow:none;padding:0;margin-bottom:12px}
 .blk.sinfondo .barra3{margin:0}
 .blk .hstate,.blk .hdet{background:var(--panel-2);box-shadow:none}
@@ -798,6 +799,8 @@ const detalleExtra = e => [e.dados ? `+${e.dados} dado${e.dados>1?"s":""}${e.tip
 const extraTipado = o => extrasArma(o).filter(e => extraOn(e) && e.tipo_extra && e.dados).reduce((m, e) => (m[e.tipo_extra] = (m[e.tipo_extra] || 0) + e.dados, m), {});
 const infoEsp = o => [o.requisito ? reqTxt(o) : "", o.material, o.bono_dano ? `+${o.bono_dano} dado${o.bono_dano>1?"s":""} de daño` : "", o.tipo_esp ? `daño ${TIPO_DANO[o.tipo_esp]}` : "", o.propiedades,
   ...extrasArma(o).map(infoExtra)].filter(Boolean).join(" · ");
+/* En la tarjeta del arma, solo un resumen: ● activa, ○ apagada o no disponible. El detalle completo está en el inventario. */
+const resumenEsp = o => [o.material, o.propiedades, ...extrasArma(o).map(e => `${extraOn(e) ? "●" : "○"} ${e.nombre}`)].filter(Boolean).join(" · ");
 const togglesEsp = o => extrasArma(o).filter(e => e.condicional).map(e => cumpleConds(e)
   ? `<button type="button" class="tog" data-efon="${esc(o.id)}|${esc(e.id)}" aria-pressed="${!!e.activo}">${esc(e.nombre)}: ${e.activo ? "activa" : "inactiva"}</button>`
   : `<button type="button" class="tog" disabled aria-pressed="false" title="Pide ${esc(txtConds(e))}">${esc(e.nombre)}: pide ${esc(txtConds(e))}</button>`).join("");
@@ -3245,6 +3248,8 @@ function discDe(atr){
   const b = bonoFisico(atr), n = b.dados || b.auto;
   return n ? {n, nombre: atr === "destreza" ? "Celeridad" : "Potencia", auto: !!b.auto} : null;
 }
+const SIGLA = {Celeridad:"Cel", Potencia:"Pot", Fortaleza:"Fort"};
+const avisoSuma = (nombre, n, suma) => avisoJuego(`${nombre} +${n}: ${suma ? "suma" : "no suma"}`);
 const J = {esp:null, atajo:null, a:"destreza", b:"armas_de_fuego", mod:0, dif:"6", fv:false, pen:true, n:5, difN:"6", danoN:1, danoT:"L", abs:false, pagar:true, sangreN:1, fvN:1, motivo:""};
 const ATAJOS = [
   {id:"iniciativa", t:"Iniciativa"},
@@ -3438,7 +3443,7 @@ function renderJuego(){
       <div class="t-top"><div class="t-txt"><b class="t-tit">${esc(tt.t)}</b><span class="t-sub">${esc(tt.s)}</span></div>
         <span class="t-n num">${ini ? `+${rasgo("destreza")+rasgo("astucia")+(penalizacion()||0)}` : r.n}<small>${ini ? "" : r.n===1 ? " dado" : " dados"}</small></span></div>
       ${ini ? "" : `<div class="t-ctl"><div class="dif"><span class="pen">Dificultad</span><div class="stepper chico"><button type="button" id="j-difm" aria-label="Bajar dificultad" ${J.dif===""?"disabled":""}>−</button><b class="num">${difTxt}</b><button type="button" id="j-difp" aria-label="Subir dificultad" ${J.dif==="10"?"disabled":""}>+</button></div></div>
-        <span style="display:flex;gap:8px">${!J.esp && espTirada() ? `<button type="button" class="tog esp" id="j-espec" aria-pressed="${!!J.espec}" title="Cada 10 vale dos éxitos">Esp. ${esc(espTirada())}</button>` : ""}${r.disc ? `<button type="button" class="tog" id="j-disc" aria-pressed="${J.sumaDisc !== false}" title="Sumar o no los dados de la Disciplina">${esc(r.disc.nombre)} +${r.disc.n}</button>` : ""}<button type="button" class="tog" id="j-fv" aria-pressed="${J.fv}" ${J.esp==="absorcion"?"disabled":""}>+1 FV</button></span></div>`}
+        <span style="display:flex;gap:8px">${!J.esp && espTirada() ? `<button type="button" class="tog esp circ" id="j-espec" aria-pressed="${!!J.espec}" aria-label="Especialidad: ${esc(espTirada())} (cada 10 vale dos éxitos)" title="Especialidad: ${esc(espTirada())}">Esp</button>` : ""}${r.disc ? `<button type="button" class="tog circ" id="j-disc" aria-pressed="${J.sumaDisc !== false}" aria-label="${esc(r.disc.nombre)} +${r.disc.n}: sumar a la tirada" title="${esc(r.disc.nombre)} +${r.disc.n}">${SIGLA[r.disc.nombre] || esc(r.disc.nombre)}</button>` : ""}<button type="button" class="tog circ" id="j-fv" aria-pressed="${J.fv}" aria-label="Gastar 1 Fuerza de Voluntad (+1 éxito)" title="+1 Fuerza de Voluntad" ${J.esp==="absorcion"?"disabled":""}>FV</button></span></div>`}
       <button class="btn grande" type="button" id="j-tirar" ${r.n<1?"disabled":""}>${textoBoton(r)}</button>
       <div id="j-out">${J.out||""}</div>
     </div>
@@ -3472,7 +3477,7 @@ function enlazarJuego(){
   v("j-atajo-mas").onclick = abrirAtajos;
   if(v("j-difm")){ v("j-difm").onclick = () => { J.dif = DIFS[Math.max(0, DIFS.indexOf(J.dif)-1)]; re(); };
     v("j-difp").onclick = () => { J.dif = DIFS[Math.min(DIFS.length-1, DIFS.indexOf(J.dif)+1)]; re(); };
-    if(v("j-disc")) v("j-disc").onclick = () => { J.sumaDisc = J.sumaDisc === false; re(); };
+    if(v("j-disc")) v("j-disc").onclick = () => { J.sumaDisc = J.sumaDisc === false; const d = reservaJ().disc; re(); if(d) avisoSuma(d.nombre, d.n, J.sumaDisc !== false); };
     v("j-fv").onclick = () => { J.fv = !J.fv; v("j-fv").setAttribute("aria-pressed", J.fv); };
     if(v("j-espec")) v("j-espec").onclick = () => { J.espec = !J.espec; v("j-espec").setAttribute("aria-pressed", J.espec); }; }
   v("j-tirar").onclick = tirarRasgos;
@@ -4067,7 +4072,7 @@ function armasJuegoHTML(){
     const s = JA[o.id] ||= {dif:"6", modo:"simple", fv:false, out:"", dano:null};
     const espA = espArma(o);
     const dc = discDe("destreza");
-    const fvBtn = (dc ? `<button type="button" class="tog" data-jacel="${o.id}" aria-pressed="${s.sumaCel !== false}" title="Sumar o no los dados de Celeridad">Celeridad +${dc.n}</button>` : "") + (espA ? `<button type="button" class="tog esp" data-jaesp="${o.id}" aria-pressed="${!!s.esp}" title="Cada 10 vale dos éxitos">Esp. ${esc(espA)}</button>` : "") + `<button type="button" class="tog" data-jafv="${o.id}" aria-pressed="${s.fv}">+1 FV</button>`;
+    const fvBtn = (dc ? `<button type="button" class="tog circ" data-jacel="${o.id}" aria-pressed="${s.sumaCel !== false}" aria-label="Celeridad +${dc.n}: sumar a la tirada" title="Celeridad +${dc.n}">Cel</button>` : "") + (espA ? `<button type="button" class="tog esp circ" data-jaesp="${o.id}" aria-pressed="${!!s.esp}" aria-label="Especialidad: ${esc(espA)} (cada 10 vale dos éxitos)" title="Especialidad: ${esc(espA)}">Esp</button>` : "") + `<button type="button" class="tog circ" data-jafv="${o.id}" aria-pressed="${s.fv}" aria-label="Gastar 1 Fuerza de Voluntad (+1 éxito)" title="+1 Fuerza de Voluntad">FV</button>`;
     if(o.tipo === "arma_fuego"){
       normArma(o);
       const reps = cargadoresDe(o.id).filter(c => (c.lugar||ENCIMA) === ENCIMA && c.balas > 0);
@@ -4075,7 +4080,7 @@ function armasJuegoHTML(){
       const pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("armas_de_fuego") + pen + (s.modo === "rafaga" ? 2 : s.modo === "auto" ? 10 : 0));
       return `<div class="arma">
         <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b>
-          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
+          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${resumenEsp(o) ? `<span class="a-sub"><span>✦ ${esc(resumenEsp(o))}</span></span>` : ""}</div>
           <span class="a-info">${pool} dados<br>daño ${(Number(o.dano)||0) + bonoEsp(o)}</span></div>
         ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
         <div class="a-ctl"><select class="mini" aria-label="Dificultad del disparo" data-ja="${o.id}:dif">${[["4","Dif. 4 · quemarropa"],["5","Dif. 5"],["6","Dif. 6 · corto"],["7","Dif. 7"],["8","Dif. 8 · largo"],["9","Dif. 9"],["10","Dif. 10"]].map(([v,t]) => `<option value="${v}" ${s.dif===v?"selected":""}>${t}</option>`).join("")}</select>
@@ -4085,7 +4090,7 @@ function armasJuegoHTML(){
     }
     const bf = bonoFisico("fuerza"), pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("pelea_con_armas") + pen), dd = rasgo("fuerza") + bf.dados + (o.dano_fuerza||0) + bonoEsp(o) + (bf.auto ? ` +${bf.auto} aut.` : "");
     return `<div class="arma">
-      <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[tipoEsp(o)||o.tipo_dano||"L"]}</span></span>${infoEsp(o) ? `<span class="a-sub"><span>✦ ${esc(infoEsp(o))}</span></span>` : ""}</div>
+      <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b><span class="a-sub"><span>Fuerza +${o.dano_fuerza||0} · ${TIPO_DANO[tipoEsp(o)||o.tipo_dano||"L"]}</span></span>${resumenEsp(o) ? `<span class="a-sub"><span>✦ ${esc(resumenEsp(o))}</span></span>` : ""}</div>
         <span class="a-info">${pool} dados<br>daño ${dd}</span></div>
       ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
       <div class="a-ctl"><select class="mini" aria-label="Dificultad del ataque" data-ja="${o.id}:dif">${[4,5,6,7,8,9,10].map(v => `<option value="${v}" ${s.dif===String(v)?"selected":""}>Dif. ${v}</option>`).join("")}</select>${fvBtn}</div>
@@ -4099,9 +4104,9 @@ function enlazarArmas(){
   document.querySelectorAll("[data-forzar]").forEach(b => b.onclick = () => { const o = INV.items.find(x => x.id === b.dataset.forzar); o.forzada = !o.forzada;
     anotarMesa(`${o.nombre}: ${o.forzada ? "la empuña aunque no cumpla el requisito" : "vuelve a pedir el requisito"}`); guardarInv(); renderJuegoConservando(); });
   document.querySelectorAll("[data-ja]").forEach(e => e.onchange = () => { const [id, k] = e.dataset.ja.split(":"); JA[id][k] = e.value; if(k === "modo") renderJuegoConservando(); });
-  document.querySelectorAll("[data-jacel]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jacel]; s.sumaCel = s.sumaCel === false; renderJuegoConservando(); });
-  document.querySelectorAll("[data-jdx]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdx]; s.sumaEx = s.sumaEx === false; renderJuegoConservando(); });
-  document.querySelectorAll("[data-jdp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdp]; s.sumaPot = s.sumaPot === false; renderJuegoConservando(); });
+  document.querySelectorAll("[data-jacel]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jacel]; s.sumaCel = s.sumaCel === false; renderJuegoConservando(); avisoSuma("Celeridad", nivelDisc("celeridad") - JT.celAcc, s.sumaCel !== false); });
+  document.querySelectorAll("[data-jdx]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdx]; s.sumaEx = s.sumaEx === false; renderJuegoConservando(); avisoSuma("Éxitos extra", s.masEx, s.sumaEx !== false); });
+  document.querySelectorAll("[data-jdp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jdp]; s.sumaPot = s.sumaPot === false; renderJuegoConservando(); avisoSuma("Potencia", s.potDados || s.danoAuto, s.sumaPot !== false); });
   document.querySelectorAll("[data-jafv]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jafv]; s.fv = !s.fv; b.setAttribute("aria-pressed", s.fv); });
   document.querySelectorAll("[data-jaesp]").forEach(b => b.onclick = () => { const s = JA[b.dataset.jaesp]; s.esp = !s.esp; b.setAttribute("aria-pressed", s.esp); });
   document.querySelectorAll("[data-jdisp]").forEach(b => b.onclick = () => disparar(b.dataset.jdisp));
@@ -4111,7 +4116,7 @@ function enlazarArmas(){
   document.querySelectorAll("[data-jdano]").forEach(b => b.onclick = () => tirarDanoArma(b.dataset.jdano));
 }
 const dadosDano = s => Math.max(0, (s.dano || 0) - (s.sumaEx === false ? (s.masEx || 0) : 0) - (s.sumaPot === false ? (s.potDados || 0) : 0));
-const controlesDano = (o, s) => !s.dano ? "" : `<div class="a-ctl" style="margin-top:6px">${s.potDados || s.danoAuto ? `<button type="button" class="tog" data-jdp="${o.id}" aria-pressed="${s.sumaPot !== false}" title="Sumar o no la Potencia al daño">Potencia ${s.potDados ? "+" + s.potDados + " dado" + (s.potDados > 1 ? "s" : "") : s.danoAuto + " éxito" + (s.danoAuto > 1 ? "s aut." : " aut.")}</button>` : ""}${s.masEx ? `<button type="button" class="tog" data-jdx="${o.id}" aria-pressed="${s.sumaEx !== false}" title="Sumar o no los éxitos extra de la tirada de ataque">Éxitos extra +${s.masEx}</button>` : ""}</div>
+const controlesDano = (o, s) => !s.dano ? "" : `<div class="a-ctl" style="margin-top:6px">${s.potDados || s.danoAuto ? `<button type="button" class="tog circ" data-jdp="${o.id}" aria-pressed="${s.sumaPot !== false}" aria-label="Potencia ${s.potDados ? "+" + s.potDados + " dado" + (s.potDados > 1 ? "s" : "") : s.danoAuto + " éxito" + (s.danoAuto > 1 ? "s aut." : " aut.")}: sumar al daño" title="Potencia">Pot</button>` : ""}${s.masEx ? `<button type="button" class="tog circ" data-jdx="${o.id}" aria-pressed="${s.sumaEx !== false}" aria-label="Éxitos extra +${s.masEx}: sumar al daño" title="Éxitos extra del ataque">Éx</button>` : ""}</div>
   <button class="btn ghost" type="button" data-jdano="${o.id}" style="margin-top:6px">Tirar daño (${dadosDano(s)} dado${dadosDano(s) === 1 ? "" : "s"})</button>`;
 function resultadoAtaque(o, t, extra){
   const dados = carasDados(t.dados, t.dificultad, anuladosT(t), t.especialidad) + (t.automaticos ? '<div class="d10 auto">FV</div>' : "");

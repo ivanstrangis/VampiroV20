@@ -663,7 +663,8 @@ await prueba("Disciplinas que suman dados: botón para sumarlas o no (tirada, ar
   await page.evaluate(() => { mostrarPestana("juego"); J.esp = null; J.atajo = null; J.a = "destreza"; J.b = "atletismo"; J.sumaDisc = true; renderJuegoConservando(); });
   const n = () => page.evaluate(() => reservaJ().n);
   const con = await n();
-  assert.match(await page.textContent("#j-disc"), /Celeridad \+2/);
+  assert.equal((await page.textContent("#j-disc")).trim(), "Cel");
+  assert.match(await page.getAttribute("#j-disc", "aria-label"), /Celeridad \+2/);
   await page.click("#j-disc");
   assert.equal(await n(), con - 2, "sin Celeridad la reserva baja 2");
   assert.equal(await page.getAttribute("#j-disc", "aria-pressed"), "false");
@@ -690,6 +691,9 @@ await prueba("Disciplinas que suman dados: botón para sumarlas o no (tirada, ar
   });
   assert.ok(r.masEx > 0, "la tirada de prueba debía tener éxitos extra");
   assert.match(r.html, /data-jdx/); assert.equal(r.todo - r.sin, r.masEx);
+  await page.evaluate(() => { JA["disc_t"].sumaEx = true; renderJuegoConservando(); });
+  await (await page.$(".tcard.armas")).screenshot({ path: join(caps, "24-tarjeta-arma.png") });
+  await page.evaluate(() => { JA["disc_t"].sumaEx = false; });
   const dados = await page.evaluate(() => { const s = JA["disc_t"]; const antes = (s.out.match(/class="d10/g) || []).length; tirarDanoArma("disc_t"); return (s.out.match(/class="d10/g) || []).length - antes; });
   assert.equal(dados, r.sin, "tira solo los dados elegidos");
   assert.match(await page.evaluate(() => JA["disc_t"].out), /sin sumar \d+ éxito/);
