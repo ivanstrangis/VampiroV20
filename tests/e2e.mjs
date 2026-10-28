@@ -1122,8 +1122,16 @@ await prueba("munición: los repuestos van dentro del arma (Repuesto 1, 2…) y 
   assert.match(t, /Repuesto 1/); assert.match(t, /16\/16/); assert.match(t, /Repuesto 2/); assert.match(t, /7\/16/);
   assert.equal(await page.locator("#s-inv .item.chico").count(), 0, "los cargadores equipados no son filas aparte");
   await foto("municion-repuestos");
-  await page.evaluate(() => { INV.items.find(o => o.id === "glock_t_r2").lugar = INV.refugios?.[0]?.id || "encima"; renderInv(); });
-  await page.evaluate(() => { INV.items = INV.items.filter(o => !["glock_t","glock_t_r1","glock_t_r2"].includes(o.id)); });
+  // se cambia el lugar de un repuesto desde la hoja del arma
+  await page.evaluate(() => { (INV.refugios ||= []).push({id:"ref_t", nombre:"Refugio de Prueba"}); abrirObjeto("glock_t"); });
+  await page.waitForSelector("#rep-l1");
+  await page.selectOption("#rep-l1", "ref_t");
+  await page.evaluate(() => document.querySelector("#rep-l0").scrollIntoView()); await foto("municion-editor");
+  await page.click("#ob-ok");
+  await page.waitForFunction(() => INV.items.find(o => o.para === "glock_t" && o.balas === 7)?.lugar === "ref_t");
+  await page.waitForTimeout(500);
+  assert.match(await page.textContent("#s-inv .item:has-text('Glock 17')"), /1 repuesto guardado en Refugio de Prueba/);
+  await page.evaluate(() => { INV.items = INV.items.filter(o => !["glock_t","glock_t_r1"].includes(o.id) && o.para !== "glock_t"); INV.refugios = INV.refugios.filter(r => r.id !== "ref_t"); renderInv(); });
 });
 
 await prueba("sin internet la app abre desde la copia guardada", async () => {
