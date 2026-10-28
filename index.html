@@ -84,6 +84,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .d10.spin{animation:spin .5s linear infinite}
 @keyframes spin{50%{transform:rotate(18deg) scale(.92)}}
 @media (prefers-reduced-motion:reduce){.d10.spin,.flash{animation:none}}
+.tabs{position:relative;--p:0}
+.tabs::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:calc((100% - 24px) / 4);border-radius:22px;background:var(--panel-2);transform:translateX(calc(var(--p) * (100% + 4px)));transition:transform .22s cubic-bezier(.2,.8,.3,1);pointer-events:none}
+.tabs.arr::before{transition:none}
+.tabs button{position:relative;z-index:1}
+.app.arr{overflow-x:clip}
+.screen.vecina{position:absolute;left:0;right:0;margin:0;z-index:1;background:var(--bg);will-change:transform}
+@media (prefers-reduced-motion:reduce){.tabs::before{transition:none}}
+.pj-caja{border:1px solid var(--line);border-radius:16px;padding:10px 10px 2px;margin:6px 0 16px;background:var(--panel)}
+.pj-caja .menu-item{background:var(--bg)}
+.pj-caja .pjlist{margin-top:0}
 @keyframes entraDer{from{opacity:0;transform:translateX(70%)}to{opacity:1;transform:none}}
 @keyframes entraIzq{from{opacity:0;transform:translateX(-70%)}to{opacity:1;transform:none}}
 .desde-der{animation:entraDer .24s cubic-bezier(.2,.8,.3,1)}.desde-izq{animation:entraIzq .24s cubic-bezier(.2,.8,.3,1)}
@@ -483,7 +493,7 @@ body{font-size:17px}
 /* barra de pestañas flotante */
 .tabs{margin:0 16px 12px;border-top:0;background:var(--panel);border-radius:28px;padding:6px;gap:4px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
 .tabs button{border-radius:22px;padding:7px 0 6px;font-size:15px}
-.tabs button[aria-selected="true"]{background:var(--panel-2);font-weight:600}
+.tabs button[aria-selected="true"]{font-weight:600}
 .tabs button[aria-selected="true"] svg{color:var(--fg)}
 .screen{padding-block:12px 96px}
 .composer{border-top:0;background:transparent}
@@ -1692,6 +1702,7 @@ $("#tabs").addEventListener("click", e => {
 });
 function mostrarPestana(t){
   document.querySelectorAll("#tabs button").forEach(x => x.setAttribute("aria-selected", x.dataset.t === t));
+  { const bs = [...document.querySelectorAll("#tabs button")], k = bs.findIndex(x => x.dataset.t === t); if(k >= 0) $("#tabs").style.setProperty("--p", String(k)); }
   const p = (t === "chat" && modoMesa()) ? "juego" : t;
   if(p !== "ficha") $("#app").querySelectorAll(".barra-ed").forEach(x => x.remove());   // la edición sigue en pie: al volver a Ficha reaparece
   ["chat","juego","ficha","inv","notas","crear"].forEach(k => $("#s-"+k).hidden = (k !== p));
@@ -1720,6 +1731,20 @@ function mostrarPestana(t){
     if(tabsYActual().i < 0) return;   // por ejemplo, durante la creación del personaje
     ini = {x:t.clientX, y:t.clientY, t:e.timeStamp};
   }, {passive:true});
+  /* La hoja vecina se dibuja pegada a la actual y viaja con el dedo; la pastilla de la barra de abajo la acompaña. */
+  let vec = null, vecJ = -1;
+  const idPantalla = t => (t === "chat" && modoMesa()) ? "juego" : t;
+  const quitarVecina = () => { if(vec){ vec.hidden = true; vec.classList.remove("vecina"); vec.style.cssText = ""; } vec = null; vecJ = -1; };
+  const ponerVecina = (tabs, j) => {
+    if(vecJ === j) return;
+    quitarVecina();
+    const id = idPantalla(tabs[j].dataset.t), el = $("#s-"+id), cur = pantalla();
+    if(!F || !el || !cur || el === cur) return;
+    if(id === "juego") renderJuego(); else if(id === "ficha") renderFicha(); else if(id === "inv") renderInv(); else if(id === "notas") renderNotas();
+    el.hidden = false; el.classList.add("vecina"); el.style.top = cur.offsetTop + "px"; el.style.height = cur.offsetHeight + "px";
+    vec = el; vecJ = j;
+  };
+  const limpiar = () => { quitarVecina(); $("#tabs").classList.remove("arr"); $("#app").classList.remove("arr"); };
   document.addEventListener("touchmove", e => {
     if(!ini) return;
     const t = e.touches[0], mx = t.clientX - ini.x, my = t.clientY - ini.y;
@@ -1732,7 +1757,12 @@ function mostrarPestana(t){
     const {tabs, i} = tabsYActual(), hay = (mx < 0 ? i + 1 < tabs.length : i > 0);
     dx = hay ? mx : mx * 0.25;   // en las puntas se estira con resistencia
     const p = pantalla(); if(!p) return;
-    p.style.transition = "none"; p.style.transform = `translateX(${dx}px)`; p.style.opacity = String(Math.max(.4, 1 - Math.abs(dx) / 500));
+    const ancho = p.offsetWidth || innerWidth;
+    $("#tabs").classList.add("arr"); $("#app").classList.add("arr");
+    if(hay) ponerVecina(tabs, i + (mx < 0 ? 1 : -1)); else quitarVecina();
+    p.style.transition = "none"; p.style.transform = `translateX(${dx}px)`; p.style.opacity = vec ? "" : String(Math.max(.4, 1 - Math.abs(dx) / 500));
+    if(vec){ vec.style.transition = "none"; vec.style.transform = `translateX(${dx + (mx < 0 ? ancho : -ancho)}px)`; }
+    $("#tabs").style.setProperty("--p", String(Math.min(tabs.length - 1, Math.max(0, i - dx / ancho))));
   }, {passive:false});
   const soltar = e => {
     if(!ini){ return; }
@@ -1741,21 +1771,25 @@ function mostrarPestana(t){
     arrastra = false;
     const p = pantalla(), dt = (e.timeStamp || 0) - f.t, rapido = Math.abs(dx) > 40 && Math.abs(dx) / Math.max(1, dt) > 0.5;
     const {tabs, i} = tabsYActual(), j = i + (dx < 0 ? 1 : -1), hay = j >= 0 && j < tabs.length;
-    const dur = reduce ? 0 : .16;
-    if(!p) return;
+    const dur = reduce ? 0 : .2;
+    if(!p){ limpiar(); return; }
+    const ancho = p.offsetWidth || innerWidth, tr = `transform ${dur}s cubic-bezier(.2,.8,.3,1), opacity ${dur}s ease-out`;
     if(!hay || (Math.abs(dx) < 90 && !rapido)){   // vuelve a su lugar
-      p.style.transition = `transform ${dur + .04}s ease-out, opacity ${dur + .04}s ease-out`; p.style.transform = ""; p.style.opacity = "";
-      setTimeout(() => { p.style.transition = ""; }, (dur + .05) * 1000); return;
+      p.style.transition = tr; p.style.transform = ""; p.style.opacity = "";
+      if(vec){ vec.style.transition = tr; vec.style.transform = `translateX(${dx < 0 ? ancho : -ancho}px)`; }
+      $("#tabs").classList.remove("arr"); $("#tabs").style.setProperty("--p", String(i));
+      setTimeout(() => { p.style.transition = ""; limpiar(); }, (dur + .03) * 1000); return;
     }
     ocupado = true;
-    p.style.transition = `transform ${dur}s ease-in, opacity ${dur}s ease-in`; p.style.transform = `translateX(${dx < 0 ? -110 : 110}%)`; p.style.opacity = "0";
+    p.style.transition = tr; p.style.transform = `translateX(${dx < 0 ? -ancho : ancho}px)`; p.style.opacity = vec ? "" : "0";
+    if(vec){ vec.style.transition = tr; vec.style.transform = "translateX(0)"; }
+    $("#tabs").classList.remove("arr"); $("#tabs").style.setProperty("--p", String(j));
     setTimeout(() => {
+      limpiar();
       p.style.transition = ""; p.style.transform = ""; p.style.opacity = "";
       mostrarPestana(tabs[j].dataset.t);
-      const n = pantalla();
-      if(n){ const c = dx < 0 ? "desde-der" : "desde-izq"; n.classList.add(c); setTimeout(() => n.classList.remove(c), 300); }
       ocupado = false;
-    }, dur * 1000);
+    }, (dur + .02) * 1000);
   };
   document.addEventListener("touchend", soltar, {passive:true}); document.addEventListener("touchcancel", soltar, {passive:true});
 })();
@@ -1822,7 +1856,8 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   <button class="menu-item" id="mi-motor" type="button"><b>Motor del Narrador</b><small>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}${MOTOR.tipo !== "claude" && MOTOR.modelo ? " · "+esc(MOTOR.modelo) : ""}</small></button>`}
   ${PLATAFORMA === "local" ? `<button class="menu-item" id="mi-claude" type="button"><b>Jugar con Claude</b><small>Abre la app dentro de Claude y narra con tu cuenta, sin clave. Llevá tu personaje con Exportar e Importar.</small></button>` : ""}
   <div class="sec-lbl" style="margin-top:14px">Mis personajes</div>
-  <div class="pjlist" id="mi-pjs"><p class="pen">Buscando personajes…</p></div>
+  <div class="pj-caja"><div class="pjlist" id="mi-pjs"><p class="pen">Buscando personajes…</p></div></div>
+  <div class="sec-lbl">Opciones</div>
   <button class="menu-item" id="mi-crear" type="button"><b>Crear un personaje nuevo</b><small>Paso a paso según el manual de V20.</small></button>
   <button class="menu-item" id="mi-imp" type="button"><b>Importar personaje</b><small>Desde un archivo exportado, un respaldo completo o un paquete de crónica.</small></button>
   <button class="menu-item" id="mi-resp" type="button"><b>Respaldar todo</b><small>${PLATAFORMA === "local" ? "Tus datos viven solo en este dispositivo: respaldá seguido. " : ""}Un archivo con todos los personajes y crónicas.</small></button>
@@ -1831,7 +1866,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   <button class="menu-item" id="mi-esc" type="button"><b>Cerrar escena</b><small>Revela las tiradas ocultas del Narrador y verifica sus sellos.</small></button>
   <button class="menu-item" id="mi-noche" type="button"><b>Empezar la noche siguiente</b><small>${esc(F?.nombre || "El personaje")} despierta: gasta 1 de Sangre y arranca una noche nueva.</small></button>` : ""}
   <div class="sec-lbl" style="margin-top:14px">Soy narrador</div>
-  <div class="pjlist" id="mi-ajenas"></div>
+  <div class="pj-caja" id="caja-ajenas" hidden><div class="pjlist" id="mi-ajenas"></div></div>
   <button class="menu-item" id="mi-imp-j" type="button"><b>Abrir la hoja de un jugador</b><small>Importá el archivo que te exportó para verla y llevarla en la mesa.</small></button>
   <div class="row"><button class="btn ghost" type="button" id="mi-x">Cerrar</button></div>`, async () => {
     $("#mi-x").onclick = cerrarSheet;
@@ -1852,7 +1887,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
       return `<button class="menu-item ${act ? "actual" : ""}" type="button" data-pj="${esc(p.id)}"><b>${esc(p.nombre || p.id)}${act ? ' <span class="tag">abierto</span>' : ""}</b><small>${esc([p.clan_nombre || lab(p.clan||""), p.generacion ? p.generacion+"ª Gen." : "", p.concepto].filter(Boolean).join(" · "))}</small></button>`; };
     const caja = $("#mi-pjs"), ajenas = $("#mi-ajenas"); if(!caja) return;
     caja.innerHTML = todos.filter(p => !p.hoja_de_jugador).map(item).join("") || '<p class="pen">Todavía no creaste personajes.</p>';
-    ajenas.innerHTML = todos.filter(p => p.hoja_de_jugador).map(item).join("");
+    const hojas = todos.filter(p => p.hoja_de_jugador); ajenas.innerHTML = hojas.map(item).join(""); $("#caja-ajenas").hidden = !hojas.length;
     document.querySelectorAll("#mi-pjs [data-pj], #mi-ajenas [data-pj]").forEach(b => b.onclick = () => { if(b.dataset.pj === PJ) cerrarSheet(); else cambiarPersonaje(b.dataset.pj); });
   }); };
 

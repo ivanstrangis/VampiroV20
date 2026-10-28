@@ -754,11 +754,19 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 300, y: 400 }] });
   for (let i = 1; i <= 6; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 300 - 12 * i, y: 402 }] }); await page.waitForTimeout(60); }
   const sigue = await page.$eval(".screen:not([hidden])", e => e.style.transform);
+  const vista = await page.evaluate(() => { const v = document.querySelector(".screen.vecina"); return v && { id: v.id, vacia: !v.innerHTML.trim(), x: v.getBoundingClientRect().left, p: parseFloat(document.getElementById("tabs").style.getPropertyValue("--p")) }; });
+  await page.screenshot({ path: join(caps, "deslizar-vecina.png") });
+  assert.ok(vista && vista.id === "s-ficha" && !vista.vacia, "se debía ver la hoja a la que voy");
+  assert.ok(vista.x > 0 && vista.x < 440, "la hoja vecina entra desde el costado");
+  assert.ok(vista.p > 0 && vista.p < 1, "la pastilla de la barra acompaña el arrastre");
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await page.waitForTimeout(550);
   assert.match(sigue, /translateX\(-\d+/, "la pantalla debía acompañar al dedo");
   assert.equal(await actual(), "chat", "un arrastre corto y lento vuelve a su lugar");
+  assert.equal(await page.$(".screen.vecina"), null, "al volver no queda hoja vecina");
+  assert.equal(await page.$eval("#tabs", t => t.style.getPropertyValue("--p")), "0");
   await lado(-200); assert.equal(await actual(), "ficha");
+  assert.equal(await page.$(".screen.vecina"), null); assert.equal(await page.$eval("#tabs", t => t.style.getPropertyValue("--p")), "1");
   await lado(-200); assert.equal(await actual(), "inv");
   if (process.env.DBG) console.log(await page.evaluate(() => { const el = document.elementFromPoint(300, 400), out = []; for (let n = el; n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); out.push(n.tagName + "." + n.className + " ox=" + cs.overflowX + " sw=" + n.scrollWidth + " cw=" + n.clientWidth); } return out.join(" | "); }));
   await lado(-200); assert.equal(await actual(), "notas");
@@ -776,6 +784,15 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
   // con un menú abierto no cambia de pestaña
   await page.evaluate(() => abrirSheet("<h2>x</h2>", () => {}));
   await lado(-200); assert.equal(await actual(), "chat");
+  await page.evaluate(() => cerrarSheet());
+});
+await prueba("menú: los personajes cargados van en su propia caja, aparte de las opciones", async () => {
+  await page.evaluate(() => { cerrarSheet(); mostrarPestana("chat"); $("#btn-menu").click(); });
+  await page.waitForSelector("#mi-pjs [data-pj]");
+  const r = await page.evaluate(() => ({ dentro: !!document.querySelector(".pj-caja #mi-pjs [data-pj]"), fuera: !!document.querySelector(".pj-caja #mi-crear, .pj-caja #mi-imp, .pj-caja #mi-resp"), opc: [...document.querySelectorAll("#sheet-root .sec-lbl")].map(x => x.textContent.trim()) }));
+  assert.ok(r.dentro, "los personajes están dentro de la caja");
+  assert.ok(!r.fuera, "las opciones no están en la caja");
+  assert.ok(r.opc.includes("Opciones"));
   await page.evaluate(() => cerrarSheet());
 });
 await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
