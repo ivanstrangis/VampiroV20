@@ -4577,7 +4577,8 @@ function abrirDadoRapido(){
     $("#dr-mas").onclick = () => set(DR.n + 1);
     $("#dr-tirar").onclick = tirarRapido;
     $("#dr-unos").onclick = aplicarUnos; $("#dr-dieces").onclick = aplicarDieces;
-    $("#dr-x").onclick = cerrarSheet;
+    // «Cerrar» deja todo como al principio; cerrar deslizando o tocando afuera conserva lo que había.
+    $("#dr-x").onclick = () => { DR.n = 5; DR.dados = []; Object.assign(DP, {abierto:false, a:"", b:"", mod:0, pen:true, sumaDisc:true}); cerrarSheet(); };
     const pers = $("#dr-pers");
     if(pers){
       const mostrar = () => { $("#dp-caja").hidden = !DP.abierto; pers.setAttribute("aria-expanded", String(DP.abierto)); pers.classList.toggle("on", DP.abierto); if(DP.abierto) actualizarPers(); };

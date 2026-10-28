@@ -1173,10 +1173,20 @@ await prueba("dado rápido: «Personalizada» arma los dados con Atributo + Habi
   const con = await page.textContent("#dr-n");
   await page.click("#dp-pen");
   assert.ok(Number(await page.textContent("#dr-n")) > Number(con), "sin restar heridas hay más dados");
-  await page.click("#dr-tirar"); await page.waitForSelector("#dr-res .d10");
+  await page.click("#dr-tirar"); await page.waitForSelector("#dr-res .d10.dr");
   assert.ok(await page.locator("#dr-res .d10").count() >= 1);
-  await page.click("#dr-x");
-  await page.evaluate(() => { F.salud = []; DP.a = ""; DP.b = ""; DP.mod = 0; DP.abierto = false; });
+  // cerrar tocando afuera conserva todo; «Cerrar» lo deja como al principio
+  await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
+  await page.click("#fab-dado");
+  assert.equal(await page.locator("#dp-caja").isVisible(), true, "la personalizada sigue abierta");
+  assert.ok(await page.locator("#dr-res .d10").count() >= 1, "siguen los dados");
+  await page.click("#dr-x"); await page.waitForTimeout(400);
+  await page.click("#fab-dado");
+  assert.equal(await page.locator("#dp-caja").isHidden(), true, "personalizada cerrada");
+  assert.equal(await page.locator("#dr-res .d10").count(), 0, "sin resultados anteriores");
+  assert.equal(await page.textContent("#dr-n"), "5");
+  await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
+  await page.evaluate(() => { F.salud = []; });
 });
 
 await prueba("sin internet la app abre desde la copia guardada", async () => {
