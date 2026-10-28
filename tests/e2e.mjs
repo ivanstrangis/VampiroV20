@@ -965,6 +965,21 @@ await prueba("creador: clan y Disciplinas quedan arriba en los pasos y su detall
   await page.evaluate(() => { W = nuevoW(); mostrarPestana("chat"); });
 });
 
+await prueba("creador: sin pestañas abajo, y al salir con algo cargado pide confirmar", async () => {
+  await page.evaluate(() => abrirCreacion());
+  assert.equal(await page.evaluate(() => document.querySelector("#tabs").hidden), true);
+  await page.click("#wz-back");     // vacío: sale sin preguntar
+  await page.waitForFunction(() => !document.querySelector("#tabs").hidden);
+  await page.evaluate(() => abrirCreacion());
+  await page.fill("#w-nombre", "Alguien");
+  await page.click("#wz-back");
+  await page.waitForSelector("#sc-si");
+  await page.click("#sc-no"); await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => document.querySelector("#tabs").hidden), true, "sigue creando");
+  await page.click("#wz-back"); await page.click("#sc-si");
+  await page.waitForFunction(() => !document.querySelector("#tabs").hidden);
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

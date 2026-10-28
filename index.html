@@ -1618,6 +1618,7 @@ function mostrarPestana(t){
   document.querySelectorAll("#tabs button").forEach(x => x.setAttribute("aria-selected", x.dataset.t === t));
   const p = (t === "chat" && modoMesa()) ? "juego" : t;
   ["chat","juego","ficha","inv","notas","crear"].forEach(k => $("#s-"+k).hidden = (k !== p));
+  if(F) $("#tabs").hidden = (p === "crear");   // creando un personaje no hay pestañas: la salida es «Atrás»
   $("#composer").hidden = (p !== "chat");
   if(cabCreacion && p !== "crear") restaurarCabecera();
   if(!F) return;
@@ -2367,7 +2368,13 @@ function enlazarWz(wz){
     while(Date.now() - t0 < (reduce?80:700)){ caja.innerHTML = `<div class="d10 spin">${d10()}</div>`; await wait(70); }
     W.sangre = d10(); re(); };
   wz.querySelectorAll("[data-refclan]").forEach(b => b.onclick = mostrarClan);
-  const b = $("#wz-back"); if(b) b.onclick = () => { if(W.step === 0){ if(F) mostrarPestana("chat"); else pantallaVacia(); } else { W.step--; renderWz(); $("#s-crear").scrollTop = 0; } };
+  const salirCreacion = () => { if(F) mostrarPestana("chat"); else pantallaVacia(); };
+  const b = $("#wz-back"); if(b) b.onclick = () => { if(W.step === 0){
+      if(![W.nombre, W.apodo, W.concepto, W.clan].some(x => String(x||"").trim())) return salirCreacion();
+      abrirSheet(`<h2>¿Salir de la creación?</h2><p class="info-desc">Lo que cargaste hasta acá del personaje nuevo se descarta.</p>
+        <div class="row"><button class="btn ghost" type="button" id="sc-no">Seguir creando</button><button class="btn" type="button" id="sc-si">Salir y descartar</button></div>`,
+        () => { $("#sc-no").onclick = cerrarSheet; $("#sc-si").onclick = () => { cerrarSheet(); salirCreacion(); }; });
+    } else { W.step--; renderWz(); $("#s-crear").scrollTop = 0; } };
   const n = $("#wz-next"); if(n) n.onclick = () => { if(validarPaso(W.step)) return; W.step++; renderWz(); $("#s-crear").scrollTop = 0; };
   const c = $("#wz-crear"); if(c) c.onclick = crearPersonaje;
 }
@@ -4349,7 +4356,7 @@ function bienvenida(){
   d.querySelector("button").onclick = () => { d.remove(); sysMsg(`Noche ${MUNDO.noche||2} · ${MUNDO.lugar||""}`); despertarYNarrar(); };
   chat.appendChild(d);
 }
-function abrirCreacion(){ W = nuevoW(); $("#tabs").hidden = !F; mostrarPestana("crear"); if(!F) renderWz(); }
+function abrirCreacion(){ W = nuevoW(); $("#tabs").hidden = true; mostrarPestana("crear"); if(!F) renderWz(); }
 function pantallaVacia(titulo, texto, boton){
   if(cabCreacion) restaurarCabecera();
   $("#pj-nombre").textContent = "VampiroV20";
