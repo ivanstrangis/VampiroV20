@@ -980,6 +980,21 @@ await prueba("creador: sin pestañas abajo, y al salir con algo cargado pide con
   await page.waitForFunction(() => !document.querySelector("#tabs").hidden);
 });
 
+await prueba("creador: Disciplinas comunes de otros clanes con puntos gratuitos (7 por círculo)", async () => {
+  await page.evaluate(() => { abrirCreacion(); W.nombre = "X Y"; W.clan = "ventrue"; W.step = 7; renderWz(); });
+  const extra = await page.evaluate(() => disExtra().join());
+  assert.match(extra, /auspex/); assert.doesNotMatch(extra, /dominacion|fortaleza|presencia|taumaturgia|necromancia/);
+  await page.evaluate(() => { document.querySelectorAll("details.cat").forEach(d => d.open = true); });
+  const antes = await page.evaluate(() => gastoGrat());
+  await page.click('[data-dp="disciplina:auspex"] button[data-v="2"]');
+  assert.equal(await page.evaluate(() => gastoGrat()) - antes, 14, "2 círculos x 7");
+  assert.equal(await page.evaluate(() => armarFichaW().disciplinas.auspex), 2);
+  assert.equal(await page.locator('.wz-ref [data-info="auspex"]').count(), 1, "aparece en la barra de arriba");
+  await page.click('[data-dp="disciplina:auspex"] button[data-v="2"]');
+  assert.equal(await page.evaluate(() => gastoGrat()) - antes, 7, "sacar uno devuelve 7");
+  await page.evaluate(() => { W = nuevoW(); mostrarPestana("chat"); });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

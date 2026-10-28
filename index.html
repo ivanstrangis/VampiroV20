@@ -2065,6 +2065,10 @@ const gastoAtr = g => ATR[g].reduce((s,a) => s + (W.atr[a] - minAtr(a)), 0);
 const gastoHab = g => sumaVals(W.hab, HAB[g]);
 const extraVir = () => VIRT.reduce((s,v) => s + W.vir[v] - 1, 0);
 const disClan = () => clanDe(W.clan)?.[2] || [];
+// Las que se pueden comprar con puntos gratuitos aunque no sean del clan (V20 pág. 83: el Narrador puede restringirlas).
+// Quedan afuera las de linaje propio (Dementación, Extinción, Necromancia, Obtenebración, Quimerismo, Serpentis, Taumaturgia, Vicisitud).
+const DISC_COMUNES = ["animalismo","auspex","celeridad","dominacion","fortaleza","ofuscacion","potencia","presencia","protean"];
+const disExtra = () => DISC_COMUNES.filter(d => !disClan().includes(d));
 function totalRasgo(tipo, k){
   const g = W.grat[tipo+":"+(k||"")] || 0;
   if(tipo === "atributo") return W.atr[k] + g;
@@ -2279,6 +2283,9 @@ function renderWz(){
       `<details class="cat" open><summary>Atributos</summary>${Object.entries(ATR).map(([g,l]) => sub(lab(g), gastoAtr(g), W.prioA[g]) + l.map(a => fbRow2("atributo",a,lab(a),atrBase(a))).join("")).join("")}</details>` +
       Object.entries(HAB).map(([g,l]) => `<details class="cat"><summary>Habilidades · ${lab(g)} ${presupuesto(gastoHab(g), W.prioH[g])}</summary>${l.map(x => fbRow2("habilidad",x,lab(x),pick("hab:"+x, W.hab[x]||0, 0, 3))).join("")}</details>`).join("") +
       `<details class="cat"><summary>Disciplinas ${presupuesto(sumaVals(W.dis, disClan()), 3)}</summary>${disClan().map(d => fbRow2("disciplina",d,lab(d),pick("dis:"+d, W.dis[d]||0, 0, 3))).join("")}</details>` +
+      `<details class="cat"><summary>Disciplinas de otros clanes${disExtra().some(d => totalRasgo("disciplina",d)) ? ` <span class="budget ok">${disExtra().filter(d => totalRasgo("disciplina",d)).length}</span>` : ""}</summary>
+        <p class="hint" style="margin:0 0 8px">Las comunes se compran con puntos gratuitos, 7 por círculo. Hace falta explicar en la historia cómo las aprendió y el Narrador puede no aceptarlas (manual, pág. 83).</p>
+        ${disExtra().map(d => fbRow2("disciplina",d,lab(d))).join("")}</details>` +
       `<details class="cat"><summary>Trasfondos ${presupuesto(sumaVals(W.tras, TRASFONDOS), 5)}</summary>${TRASFONDOS.map(t => fbRow2("trasfondo",t,lab(t),pick("tras:"+t, W.tras[t]||0, 0, 5)) + det(t)).join("")}</details>` +
       `<details class="cat" open><summary>Virtudes ${presupuesto(extraVir(), 7)}</summary>${VIRT.map(v => fbRow2("virtud",v,lab(v),pick("vir:"+v, W.vir[v], 1, 5))).join("")}
         ${fbRow2("humanidad","","Humanidad",'<span class="pen">Conciencia + Autocontrol</span>')}${fbRow2("fuerza_voluntad","","Fuerza de Voluntad",'<span class="pen">Coraje</span>')}</details>` +
@@ -2324,7 +2331,8 @@ function refClanDisc(){
   const c = clanDe(W.clan);
   if(!c || W.step < 2 || W.step > 8) return "";
   return `<div class="wz-ref" role="toolbar" aria-label="Tu clan y sus Disciplinas"><button type="button" class="ref-chip clan" data-refclan>${esc(c[0])}</button>` +
-    c[2].map(d => { const n = totalRasgo("disciplina", d); return `<button type="button" class="ref-chip ${n ? "tiene" : ""}" data-info="${d}" data-v="${n}" aria-label="${esc(lab(d))}, nivel ${n}">${esc(lab(d))} <small>${n}</small></button>`; }).join("") + "</div>";
+    c[2].map(d => { const n = totalRasgo("disciplina", d); return `<button type="button" class="ref-chip ${n ? "tiene" : ""}" data-info="${d}" data-v="${n}" aria-label="${esc(lab(d))}, nivel ${n}">${esc(lab(d))} <small>${n}</small></button>`; }).join("") +
+    disExtra().filter(d => totalRasgo("disciplina", d)).map(d => { const n = totalRasgo("disciplina", d); return `<button type="button" class="ref-chip tiene" data-info="${d}" data-v="${n}" aria-label="${esc(lab(d))}, de otro clan, nivel ${n}">${esc(lab(d))} <small>${n}</small></button>`; }).join("") + "</div>";
 }
 function mostrarClan(){
   const c = clanDe(W.clan); if(!c) return;
@@ -2383,7 +2391,7 @@ function armarFichaW(){
   const atr = {}, hab = {}, dis = {}, tras = {}, vir = {};
   Object.values(ATR).flat().forEach(a => atr[a] = totalRasgo("atributo",a));
   HAB_ALL.forEach(h => { const v = totalRasgo("habilidad",h); if(v) hab[h] = v; });
-  disClan().forEach(d => { const v = totalRasgo("disciplina",d); if(v) dis[d] = v; });
+  [...disClan(), ...disExtra()].forEach(d => { const v = totalRasgo("disciplina",d); if(v) dis[d] = v; });
   TRASFONDOS.forEach(t => { const v = totalRasgo("trasfondo",t); if(v) tras[t] = v; });
   VIRT.forEach(v => vir[v] = totalRasgo("virtud",v));
   const generacion = generacionW(), [, reserva] = GEN[generacion];
@@ -3039,6 +3047,7 @@ async function revisarConNarrador(f){
   const rec = totalRasgo("trasfondo","recursos");
   const datos = {nombre:f.nombre, concepto:f.concepto, clan:f.clan_nombre, generacion:f.generacion, naturaleza:f.naturaleza, conducta:f.conducta,
     descripcion:f.descripcion, atributos:f.atributos, habilidades:f.habilidades, disciplinas:f.disciplinas, trasfondos:f.trasfondos,
+    disciplinas_fuera_de_clan:Object.keys(f.disciplinas).filter(d => !disClan().includes(d)).map(lab),
     virtudes:f.virtudes, humanidad:f.humanidad, fuerza_de_voluntad:f.fv_max,
     meritos:W.myd.filter(x => x.tipo === "Mérito").map(x => `${conDetalle(x)} (${x.puntos})${x.propio ? " [propio: "+x.desc+"]" : ""}`),
     defectos:W.myd.filter(x => x.tipo === "Defecto").map(x => `${conDetalle(x)} (${x.puntos})${x.propio ? " [propio: "+x.desc+"]" : ""}`),
@@ -3049,6 +3058,7 @@ async function revisarConNarrador(f){
 - Méritos y Defectos propios (marcados [propio]): ¿el efecto es claro y el costo en puntos es justo comparado con los del manual? Si no, proponé el costo correcto.
 - Méritos o Defectos del manual: ¿son compatibles con el clan y el concepto? (por ejemplo, Temperamental o Corazón Calmado no van con Brujah; Monstruoso no va con Nosferatu).
 - ¿El concepto, la Naturaleza y la Conducta tienen sentido juntos?
+- Si hay disciplinas_fuera_de_clan: el manual permite comprarlas con puntos gratuitos pero pide una explicación en la historia y el Narrador decide. ¿El concepto o la descripción justifican cómo las aprendió? Si no, sugerí qué agregar, pero no rechaces solo por eso.
 No rechaces por cuestiones de gusto. Rechazá solo lo que un Narrador justo no aceptaría. Hablá en castellano rioplatense, breve y concreto.
 Respondé SOLO con JSON así: {"aprobado": true|false, "observaciones": ["frase corta", ...]}. Si aprobás, las observaciones pueden ser sugerencias o quedar vacías. Si rechazás, cada observación dice qué cambiar.
 
