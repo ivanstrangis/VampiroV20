@@ -5040,7 +5040,7 @@ const MOTORES = {
   anthropic:  {nombre:"Claude (API de Anthropic)", base:"https://api.anthropic.com/v1", modelo:"claude-sonnet-5-5", protocolo:"anthropic", nota:"De pago. No es tu plan de Claude: la API se paga aparte, por uso.", enlace:"https://console.anthropic.com/settings/keys"},
   otro:       {nombre:"Otro compatible con OpenAI", base:"", modelo:"", nota:"Cualquier servicio con /chat/completions (incluye Ollama en tu compu)."}
 };
-let MOTOR = {tipo:"claude"}, SAMPLE_CLAUDE = null, TOOLS_CLAUDE = 0;
+let MOTOR = {tipo:"claude"}, SAMPLE_CLAUDE = null, TOOLS_CLAUDE = 0, DIAG_CLAUDE = "";
 try { MOTOR = JSON.parse(localStorage.getItem("bbn_ia") || "null") || MOTOR; } catch(_){}
 const errIA = (code, message, extra) => Object.assign(new Error(message || code), {code}, extra);
 
@@ -5247,7 +5247,7 @@ function abrirMotor(despues){
   const m = MOTOR, claudeOk = !!SAMPLE_CLAUDE;
   const tipos = Object.entries(MOTORES).filter(([k]) => k !== "claude" || PLATAFORMA === "claude");
   abrirSheet(`<h2>Motor del Narrador</h2>
-  ${HAY_IA() ? "" : PLATAFORMA === "claude" ? `<p class="pen sep" id="mo-aviso">Esta vista de Claude no le dio permiso a la página para usar tu cuenta. Aceptá el permiso cuando lo pida, o abrí el artefacto en claude.ai. Mientras tanto podés usar una clave: con Groq es gratis (<a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>).</p>` : `<p class="pen sep" id="mo-aviso">Para jugar con Narrador IA necesitás una clave. Con Groq es gratis: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Sin clave podés jugar en mesa igual.</p>`}
+  ${HAY_IA() ? (PLATAFORMA === "claude" ? `<p class="pen sep"><small>Diagnóstico: ${esc(DIAG_CLAUDE)} · motor ${esc(MOTOR.tipo)}.</small></p>` : "") : PLATAFORMA === "claude" ? `<p class="pen sep" id="mo-aviso">Esta vista de Claude no le dio permiso a la página para usar tu cuenta. Aceptá el permiso cuando lo pida, o abrí el artefacto en claude.ai. <small>Diagnóstico: ${esc(DIAG_CLAUDE || "sin datos")}.</small> Mientras tanto podés usar una clave: con Groq es gratis (<a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>).</p>` : `<p class="pen sep" id="mo-aviso">Para jugar con Narrador IA necesitás una clave. Con Groq es gratis: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Sin clave podés jugar en mesa igual.</p>`}
   <p class="pen sep">Elegí qué IA narra tu crónica. La clave se guarda solo en este dispositivo y nunca se exporta.</p>
   <div class="field"><label for="mo-tipo">Motor</label><select id="mo-tipo">${tipos.map(([k, v]) => `<option value="${k}" ${m.tipo === k ? "selected" : ""} ${k === "claude" && !claudeOk ? "disabled" : ""}>${esc(v.nombre)}</option>`).join("")}</select></div>
   <p class="pen sep" id="mo-nota"></p>
@@ -5360,9 +5360,9 @@ async function conectar(){
     if(!RAW || !YO) return false;
     DB = crearDB(RAW);
     try { DESCARGAS = await window.claude?.use?.("downloads"); } catch(_){ DESCARGAS = null; }
-    try { SAMPLE_CLAUDE = await window.claude?.use?.("sample"); } catch(_){ SAMPLE_CLAUDE = null; }
+    try { SAMPLE_CLAUDE = await window.claude?.use?.("sample"); DIAG_CLAUDE = SAMPLE_CLAUDE ? "sample ok" : "sample no disponible (use devolvió vacío)"; } catch(e){ SAMPLE_CLAUDE = null; DIAG_CLAUDE = "sample falló: " + (e?.code || e?.message || e); }
     if(SAMPLE_CLAUDE){
-      let lim = null; try { lim = await SAMPLE_CLAUDE.limits(); } catch(_){}
+      let lim = null; try { lim = await SAMPLE_CLAUDE.limits(); DIAG_CLAUDE += "; limits " + Object.keys(lim || {}).join("/"); } catch(e){ DIAG_CLAUDE += "; limits falló: " + (e?.code || e?.message || e); }
       TOOLS_CLAUDE = lim?.tools?.maxCount || 0;
       if(!lim?.tools) SAMPLE_CLAUDE = claudeSinHerramientas(SAMPLE_CLAUDE);   // esta vista no deja pasar herramientas: se piden por texto
     }
