@@ -997,7 +997,7 @@ await prueba("creador: Disciplinas comunes de otros clanes con puntos gratuitos 
 
 await prueba("Taumaturgia: Sendas secundarias con experiencia, límites del manual y poderes en la ficha", async () => {
   await page.evaluate(() => { F.disciplinas = {...F.disciplinas, taumaturgia: 1}; F.sendas = undefined; F.xp = 80; F.habilidades = {...F.habilidades, subterfugio: 1}; F.poderes = poderesDe(F.disciplinas, F.sendas); });
-  const b = (k, a) => page.evaluate(([k, a]) => bloqueoSenda(F, k, a), [k, a]);
+  const b = (k, a) => page.evaluate(([k, a]) => bloqueoSenda(F, "taumaturgia", k, a), [k, a]);
   assert.match(await b("conjuracion", 0), /al menos 2 niveles/);
   await page.evaluate(() => { F.disciplinas.taumaturgia = 3; });
   assert.equal(await b("conjuracion", 0), "");
@@ -1010,7 +1010,7 @@ await prueba("Taumaturgia: Sendas secundarias con experiencia, límites del manu
   assert.match(await b("corrupcion", 1), /Subterfugio/);
   // por la hoja de experiencia
   await page.evaluate(() => { F.disciplinas.taumaturgia = 3; renderFicha(); abrirGastarXP(); });
-  await page.selectOption("#gx-t", "senda"); await page.selectOption("#gx-r", "conjuracion");
+  await page.selectOption("#gx-t", "senda"); await page.selectOption("#gx-r", "taumaturgia:conjuracion");
   await page.click("#gx-ok");
   assert.equal(await page.evaluate(() => F.sendas.taumaturgia.conjuracion), 1);
   assert.equal(await page.evaluate(() => F.xp), 73);
@@ -1020,6 +1020,33 @@ await prueba("Taumaturgia: Sendas secundarias con experiencia, límites del manu
   assert.match(await page.evaluate(() => { try { usarPoder("taumaturgia", 2, "Permanencia", 1, 0, "conjuracion"); return "ok"; } catch(e){ return e.message; } }), /requiere nivel 2/);
   await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
   await page.evaluate(() => { F.disciplinas.taumaturgia = 0; delete F.disciplinas.taumaturgia; F.sendas = undefined; F.poderes = poderesDe(F.disciplinas, F.sendas); });
+});
+
+await prueba("Necromancia: Sendas secundarias (3 de Sepulcro, tercera Senda con Sepulcro 5) y creación con puntos gratuitos", async () => {
+  const b = (d, k, a, ss) => page.evaluate(([d, k, a, ss]) => bloqueoSenda({disciplinas:{necromancia:ss.nec, taumaturgia:ss.tau||0}, sendas:ss.sendas||{}, habilidades:{subterfugio:1}}, d, k, a), [d, k, a, ss]);
+  assert.match(await b("necromancia", "osario", 0, {nec:2}), /al menos 3 niveles/);
+  assert.equal(await b("necromancia", "osario", 0, {nec:3}), "");
+  assert.equal(await b("necromancia", "osario", 3, {nec:3, sendas:{necromancia:{osario:3}}}), "", "una secundaria puede subir sin tope relativo");
+  assert.match(await b("necromancia", "cenizas", 0, {nec:3, sendas:{necromancia:{osario:1}}}), /tercera Senda/);
+  assert.equal(await b("necromancia", "cenizas", 0, {nec:5, sendas:{necromancia:{osario:1}}}), "");
+  // creación: Taumaturgia 2 (clan Tremere) + Fuego 1 con puntos gratuitos
+  await page.evaluate(() => { abrirCreacion(); W.nombre = "X Y"; W.clan = "tremere"; W.dis = {taumaturgia: 2}; W.step = 7; renderWz(); document.querySelectorAll("details.cat").forEach(d => d.open = true); });
+  const antes = await page.evaluate(() => gastoGrat());
+  await page.click('[data-dp="senda:taumaturgia/llamas"] button[data-v="2"]');   // 2 > 2-1: no se puede
+  assert.equal(await page.evaluate(() => gastoGrat()) - antes, 0, "no deja pasar la Sangre");
+  assert.match(await page.textContent("details.cat .err"), /un punto por encima|Sangre/);
+  await page.click('[data-dp="senda:taumaturgia/llamas"] button[data-v="1"]');
+  assert.equal(await page.evaluate(() => gastoGrat()) - antes, 7);
+  const f = await page.evaluate(() => armarFichaW());
+  assert.equal(f.sendas.taumaturgia.llamas, 1);
+  assert.ok(f.poderes.some(p => p.senda === "llamas" && p.nombre === "Vela"));
+  assert.equal(await page.locator('[data-dp="senda:necromancia/osario"]').count(), 0, "sin Necromancia no aparece");
+  // el Narrador usa un poder de Necromancia por Senda
+  await page.evaluate(() => { F.disciplinas.necromancia = 3; F.sendas = {necromancia:{osario:2}}; F.sangre = 5; F.fv = 5; });
+  assert.equal(await page.evaluate(() => usarPoder("necromancia", 2, "Escobas del Aprendiz", 1, 1, "osario").ok), true);
+  assert.match(await page.evaluate(() => { try { usarPoder("necromancia", 3, "Hordas Tambaleantes", 1, 1, "osario"); return "ok"; } catch(e){ return e.message; } }), /requiere nivel 3/);
+  assert.equal(await page.evaluate(() => usarPoder("necromancia", 2, "Invocar Alma", 1, 0).ok), true, "sin Senda = Sepulcro");
+  await page.evaluate(() => { delete F.disciplinas.necromancia; F.sendas = undefined; W = nuevoW(); mostrarPestana("chat"); });
 });
 
 await prueba("sin internet la app abre desde la copia guardada", async () => {
