@@ -3715,6 +3715,7 @@ const TIPOS_CRONICA = [
 const FORMATO_CRON = "vampirov20-cronica";
 const nombreTipo = id => TIPOS_CRONICA.find(t => t.id === id)?.nombre || "";
 const clonar = x => JSON.parse(JSON.stringify(x));
+let MUNDO_PEND = null;
 
 function abrirPartida(){
   if(!F || esHojaAjena()) return;
@@ -3789,7 +3790,9 @@ async function ponerEnCronica(cid, e){
     historia:e.historia || "", resumen:"", opciones:[], sellos:[], cierre_n:Math.max(MUNDO.cierre_n || 0, ...MSGS.map(m => m.n || 0))});
   await guardarMundo();
   evento("cronica_elegida", {cronica:cid});
+  MUNDO_PEND = clonar(MUNDO);   // al recargar no se confía en que la base ya devuelva lo recién escrito
   await cambiarPersonaje(PJ);
+  if(modoMesa()) sysMsg(`No se pudo pasar a Narrador IA (${esHojaAjena() ? "es la hoja de un jugador" : !HAY_IA() ? "no hay motor de IA" : "el modo no quedó guardado"}).`, "err", false);
 }
 // El personaje entra a una crónica que ya existe (propia o importada) y sigue desde donde quedó.
 async function unirseACronica(cid, estado){
@@ -5448,6 +5451,7 @@ async function iniciar(){
   try {
     [F, INV, CON, MUNDO, NOTAS] = await Promise.all([R.ficha(), R.inv(), R.con(), R.mundo(), R.notas()].map(cargarDoc));
     MUNDO ||= {};
+    if(MUNDO_PEND){ Object.assign(MUNDO, MUNDO_PEND); MUNDO_PEND = null; guardarMundo(); }
     [GUIA, CRONICA, CRON] = await Promise.all([R.guia(), R.cron(), R.meta()].map(cargarDoc));
   } catch(e){ return sinBase("No se pudo leer la partida ("+(e.code||"error")+"). Recargá la página."); }
   if(!F){ PJ = ""; try { localStorage.removeItem("bbn_pj"); } catch(_){} return iniciar(); }
