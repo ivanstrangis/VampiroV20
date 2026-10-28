@@ -1049,6 +1049,67 @@ await prueba("Necromancia: Sendas secundarias (3 de Sepulcro, tercera Senda con 
   await page.evaluate(() => { delete F.disciplinas.necromancia; F.sendas = undefined; W = nuevoW(); mostrarPestana("chat"); });
 });
 
+await prueba("Rituales en el Inventario: del manual con requisitos, propios de la crónica, creación y Narrador", async () => {
+  await page.evaluate(() => { F.disciplinas = {...F.disciplinas, taumaturgia: 2}; F.rituales = []; F.clan = "tremere"; guardarFicha(); });
+  await page.click('#tabs [data-t="inv"]');
+  assert.equal(await page.locator("#rit-blk #rit-add").count(), 1);
+  assert.match(await page.textContent("#rit-blk"), /Todavía no aprendiste/);
+  // del manual: uno de nivel 1 sí; uno de nivel 3 pide Taumaturgia 3
+  await foto("rit-1-inventario-vacio");
+  await page.click("#rit-add");
+  await page.waitForSelector("#rq-lista details");
+  await foto("rit-2-manual");
+  const n1 = await page.locator("#rq-lista details").count();
+  assert.ok(n1 > 30, "lista de Taumaturgia: " + n1);
+  await page.fill("#rq-q", "defensa del refugio");
+  await page.click("#rq-lista summary");
+  await page.click('[data-rq-a]');
+  assert.deepEqual(await page.evaluate(() => F.rituales.map(r => r.nombre)), ["Defensa del Refugio Sagrado"]);
+  await page.fill("#rq-q", "adherencia");
+  await page.click("#rq-lista summary");
+  assert.match(await page.textContent("#rq-lista .err"), /Taumaturgia 3 \(tenés 2\)/);
+  assert.match(await page.textContent("[data-rq-a]"), /Aprender igual/);
+  // propio de la crónica, con requisito de Senda y clan, guardado para otros
+  await foto("rit-3-aprender-igual");
+  await page.click('[data-rqv="nuevo"]');
+  await foto("rit-4-formulario");
+  await page.fill("#rf-nombre", "Sello del Sótano");
+  await page.fill("#rf-efecto", "Sella una puerta hasta el amanecer.");
+  await page.fill("#rf-nivel", "2");
+  await page.click("#rf-req"); await page.selectOption("#rq-t0", "clan"); await page.selectOption("#rq-i0", "tremere");
+  await page.click("#rf-ok");
+  await page.waitForFunction(() => F.rituales.length === 2);
+  assert.equal(await page.evaluate(() => RIT_USR.length), 1);
+  assert.equal(await page.evaluate(() => F.rituales.find(r => r.origen === "propio").req[0].id), "tremere");
+  await page.waitForTimeout(400);
+  assert.match(await page.textContent("#rit-blk"), /Sello del Sótano/);
+  assert.match(await page.textContent("#rit-blk"), /de la crónica/);
+  // preparar tirada manda a Juego con Inteligencia + Ocultismo
+  await page.click('#rit-blk details:has-text("Sello del Sótano") summary');
+  await foto("rit-5-tarjeta");
+  await page.click('#rit-blk details[open] [data-rit-t]');
+  assert.deepEqual(await page.evaluate(() => [J.a, J.b, J.dif]), ["inteligencia", "ocultismo", "5"]);
+  // olvidar pide confirmar
+  await page.click('#tabs [data-t="inv"]');
+  await page.click('#rit-blk details:has-text("Sello del Sótano") summary');
+  await page.click('#rit-blk details[open] [data-rit-x]'); await page.click('#rit-blk details[open] [data-rit-x]');
+  assert.equal(await page.evaluate(() => F.rituales.length), 1);
+  // la biblioteca viaja en la exportación y se valida
+  assert.equal(await page.evaluate(() => ritualValido({nombre:"x", efecto:""})), null);
+  assert.equal(await page.evaluate(async () => { const n = await fusionarRituales([{nombre:"Otro", efecto:"algo", nivel:99, disc:"rara", id:"x1"}, {nombre:""}]); return n + ":" + RIT_USR.find(r => r.id === "x1").nivel + RIT_USR.find(r => r.id === "x1").disc; }), "1:10otra");
+  // el Narrador aprende uno del manual y uno propio, y se le avisa si no cumple
+  assert.equal(await page.evaluate(() => { aprenderRitual(RITUALES.find(r => r.nombre === "Éxtasis de Sangre")); return F.rituales.length; }), 2);
+  // creación: ritual inicial
+  await page.evaluate(() => { F.rituales = []; abrirCreacion(); W.nombre = "X Y"; W.clan = "tremere"; W.dis = {taumaturgia: 1}; W.step = 8; renderWz(); });
+  await page.selectOption("#w-rit-taumaturgia", "tau_atar_la_lengua_acusadora");
+  assert.equal(await page.evaluate(() => armarFichaW().rituales[0].nombre), "Atar la Lengua Acusadora");
+  await page.selectOption("#w-rit-taumaturgia", "propio");
+  assert.match(await page.textContent(".wz .err"), /nombre del ritual inicial/);
+  await page.fill("#w-ritn-taumaturgia", "Sello Propio");
+  assert.equal(await page.evaluate(() => armarFichaW().rituales[0].nombre), "Sello Propio");
+  await page.evaluate(() => { W = nuevoW(); RIT_USR = []; mostrarPestana("chat"); });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

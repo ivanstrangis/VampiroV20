@@ -315,6 +315,19 @@ details.esp-arma{margin-top:16px}
 .pod{margin:2px 0 0}
 .arqbox .pdesc{margin-top:0}
 .sda{margin:8px 0 0;font-size:16px}
+.rit summary{gap:10px}
+.rit-n{display:flex;flex-direction:column;min-width:0;flex:1}
+.rit-n small{color:var(--muted);font-size:16px}
+.rit summary .dots{flex:none}
+.rit-ef{margin:0;line-height:1.45}
+.rit-kv{display:flex;flex-direction:column;gap:2px}
+.rit-kv small{color:var(--muted);font-size:16px;letter-spacing:.04em}
+.rit-chip{flex:none;font-size:16px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--muted)}
+.rit-chip.ok{color:var(--ok);border-color:var(--ok)}
+.rq-req{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.rit-form .field textarea{min-height:90px}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:16px;margin:10px 0}
+.check input{margin-top:4px;flex:none;width:20px;height:20px}
 .sdp{margin:0 0 8px}
 .sdp .pod{margin-top:0}
 .pdet.sendas summary{display:block;font-weight:600;padding:6px 0}
@@ -1244,7 +1257,8 @@ function contexto(){
     nombre:F.nombre, clan:F.clan, generacion:F.generacion, concepto:F.concepto, naturaleza:F.naturaleza, conducta:F.conducta,
     descripcion:F.descripcion, atributos:F.atributos, habilidades:F.habilidades, disciplinas:F.disciplinas, poderes:F.poderes,
     trasfondos:F.trasfondos, trasfondos_detalle:F.trasfondos_detalle||{}, especialidades:F.especialidades||{}, trasfondos_notas:Object.fromEntries(Object.entries(F.trasfondos_notas||{}).map(([t,l]) => [t, l.map(n => n.texto)])), virtudes:F.virtudes, humanidad:F.humanidad,
-    fuerza_de_voluntad:`${F.fv}/${F.fv_max}`, ...(F.sendas ? {sendas:F.sendas} : {}), sangre:`${F.sangre}/${reserva} (gasto máx. ${porTurno} por turno)`,
+    fuerza_de_voluntad:`${F.fv}/${F.fv_max}`, ...(F.sendas ? {sendas:F.sendas} : {}),
+    ...(F.rituales?.length ? {rituales:F.rituales.map(r => ({nombre:r.nombre, disciplina:discRit(r), nivel:r.nivel, ...(r.tiempo ? {tiempo:r.tiempo} : {}), ...(r.costo ? {costo:r.costo} : {}), efecto:corto(r.efecto, 220)}))} : {}), sangre:`${F.sangre}/${reserva} (gasto máx. ${porTurno} por turno)`,
     hambriento:hambriento(), salud:nivelSalud(), penalizacion_heridas:penalizacion(), estado:F.estado||"activo",
     meritos:(F.meritos||[]).map(d => d.nombre+": "+d.efecto), defectos:(F.defectos||[]).map(d => d.nombre+": "+d.efecto), criterios_de_mesa:F.criterios_texto||[]
   };
@@ -1334,6 +1348,19 @@ function herramientas(){
     {type:"object", properties:{disciplina:{type:"string"}, nivel:{type:"integer"}, poder:{type:"string"}, sangre:{type:"integer"}, fv:{type:"integer"}, senda:{type:"string", description:"Solo Taumaturgia y Necromancia: la Senda del poder. Taumaturgia: sangre, " + Object.keys(SENDAS_TAUM).join(", ") + ". Necromancia: sepulcro, " + Object.keys(SENDAS_NECRO).join(", ") + ". Si se omite, es la Senda primaria (Sangre o Sepulcro)."}}, required:["disciplina","nivel","poder"]},
     i => { const r = usarPoder(String(i.disciplina), Number(i.nivel)||1, String(i.poder), Number(i.sangre)||0, Number(i.fv)||0, i.senda ? String(i.senda) : "");
       turnoActual.agregar({rol:"sistema", clase:"rule", texto:`${i.poder} · ${lab(norm(i.disciplina))} ${i.nivel}${i.sangre?` · −${i.sangre} Sangre`:""}${i.fv?` · −${i.fv} FV`:""}`}); return r; });
+  tool("ritual", "Rituales que sabe el personaje (Taumaturgia, Necromancia u otros). accion: aprender (alguien se lo enseña o lo encuentra en la historia; si es del manual alcanza el nombre; si lo inventó la crónica, pasá también disciplina, nivel y efecto) u olvidar. Para usar uno: tirada_jugador con Inteligencia + Ocultismo, dificultad 3 + nivel del ritual (máximo 9); un éxito alcanza, y el costo (Sangre, FV) se cobra con gastar_sangre o gastar_fuerza_voluntad.",
+    {type:"object", properties:{accion:{type:"string", enum:["aprender","olvidar"]}, nombre:{type:"string"}, disciplina:{type:"string", enum:["taumaturgia","necromancia","otra"]}, disciplina_nombre:{type:"string", description:"Si disciplina es otra: de qué tradición es"}, nivel:{type:"integer"}, efecto:{type:"string"}, tiempo:{type:"string"}, costo:{type:"string"}, ingredientes:{type:"string"}}, required:["accion","nombre"]},
+    i => { activo(); const nom = String(i.nombre || "").trim(), b = norm(nom); if(!nom) throw new ReglaError("Falta el nombre del ritual.");
+      if(i.accion === "olvidar"){ const r = (F.rituales || []).find(x => norm(x.nombre) === b); if(!r) throw new ReglaError(`${F.nombre} no sabe «${nom}». Sabe: ${(F.rituales || []).map(x => x.nombre).join(", ") || "ningún ritual"}.`);
+        F.rituales = F.rituales.filter(x => x !== r); evento("ritual_olvidado", {ritual:r.nombre}); guardarFicha(); turnoActual.agregar({rol:"sistema", clase:"rule", texto:`Ritual · olvida ${r.nombre}`}); return {ok:true}; }
+      const c = [...RITUALES, ...RIT_USR].find(x => norm(x.nombre) === b);
+      let nuevo = c;
+      if(!c){ if(!i.disciplina || !i.efecto) throw new ReglaError(`«${nom}» no está en el manual. Para crearlo pasá disciplina, nivel y efecto.`);
+        nuevo = ritualValido({nombre:nom, disc:i.disciplina, discNombre:i.disciplina_nombre, nivel:i.nivel || 1, efecto:i.efecto, tiempo:i.tiempo, costo:i.costo, ingredientes:i.ingredientes, id:"r" + Date.now().toString(36)}); }
+      if((F.rituales || []).some(x => x.id === nuevo.id || norm(x.nombre) === b)) throw new ReglaError(`${F.nombre} ya sabe «${nuevo.nombre}».`);
+      const falta = c ? faltaRit(F, c) : [];
+      if(falta.length) throw new ReglaError(`${F.nombre} todavía no puede aprender «${nuevo.nombre}»: necesita ${falta.join(", ")}.`);
+      aprenderRitual(nuevo); turnoActual.agregar({rol:"sistema", clase:"rule", texto:`Ritual · aprende ${nuevo.nombre} (${discRit(nuevo)} ${nuevo.nivel})`}); return {ok:true, ritual:nuevo.nombre, tirada:tiradaRit(nuevo)}; });
   tool("gastar_sangre", "Gasta Sangre del personaje (Atributos físicos, parecer humano, Celeridad, etc.). ignora_limite solo para Celeridad.",
     {type:"object", properties:{puntos:{type:"integer"}, motivo:{type:"string"}, ignora_limite:{type:"boolean"}}, required:["puntos","motivo"]},
     i => { const r = gastarSangre(i.puntos, String(i.motivo), !!i.ignora_limite); turnoActual.agregar({rol:"sistema", clase:"blood", texto:`Ficha · −${i.puntos} Sangre (${i.motivo}) · ${r.antes} → ${r.ahora}`}); flash("m-blood"); return r; });
@@ -1600,7 +1627,9 @@ function renderInv(){
   $("#s-inv").innerHTML = (mesa ? `<section class="blk"><div class="barra3 b4"><button class="btn ghost" type="button" data-nuevo="fuego">+ Arma de fuego</button><button class="btn ghost" type="button" data-nuevo="cc">+ Cuerpo a cuerpo</button><button class="btn ghost" type="button" data-nuevo="objeto">+ Objeto</button></div><p class="pen" style="margin:8px 0 0">Tocá el nombre de un objeto para editarlo.</p></section>` : "") +
     `<div class="money"><span class="mlbl">Dinero</span><span class="num">${pesos(INV.dinero)}</span>${mesa ? '<button class="btn ghost" type="button" id="inv-din" style="padding:4px 10px">Editar</button>' : ""}</div>
     <section class="blk"><h2>Equipado</h2><div class="sec-lbl">Armas</div>${armas.map(it).join("")||'<p class="pen">—</p>'}<div class="sec-lbl" style="margin-top:14px">Equipo</div>${resto.map(it).join("")||'<p class="pen">—</p>'}</section>
+    ${ritualesHTML(mesa)}
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px"><div class="sec-lbl" style="margin:0">Refugios</div>${mesa ? '<button class="btn ghost" type="button" id="ref-nuevo">+ Refugio</button>' : ""}</div>${refs || '<p class="pen">No tiene refugios.</p>'}`;
+  enlazarRituales(mesa);
   if(mesa){
     document.querySelectorAll("[data-ref]").forEach(b => b.onclick = () => abrirRefugio(b.dataset.ref));
     $("#ref-nuevo").onclick = () => abrirRefugio(null);
@@ -1793,7 +1822,7 @@ async function exportarPersonaje(){
   if(!F) return;
   const ajena = esHojaAjena();
   const datos = {formato:FORMATO, version:2, exportado:new Date().toISOString(), ficha:F, inventario:INV, conocimiento:CON, notas:NOTAS,
-    mundo:MUNDO, director: ajena || (!GUIA?.texto && !GUIA?.premisa) ? null : GUIA, cronica: ajena ? null : CRONICA, cronica_meta: ajena ? null : CRON, mensajes: ajena ? null : await mensajesDe(PJ), modelos_armas:MODELOS_USR};
+    mundo:MUNDO, director: ajena || (!GUIA?.texto && !GUIA?.premisa) ? null : GUIA, cronica: ajena ? null : CRONICA, cronica_meta: ajena ? null : CRON, mensajes: ajena ? null : await mensajesDe(PJ), modelos_armas:MODELOS_USR, rituales_cronica:RIT_USR};
   const nombre = (norm(F.nombre).replace(/[^a-z0-9_]/g, "").slice(0, 40) || "personaje") + ".json";
   const texto = JSON.stringify(datos, null, 1);
   try {
@@ -1835,7 +1864,7 @@ $("#f-importar").addEventListener("change", async e => {
   if(!jug && Array.isArray(d.mensajes)) for(const m of d.mensajes) if(m && Number.isFinite(Number(m.n))) docs.push(["mensajes_" + id + "/m" + m.n, m]);
   try { for(const [p, x] of docs) await DB.doc(p).set(JSON.parse(JSON.stringify(x))); }
   catch(e2){ sysMsg("No se pudo importar ("+(e2.code||"error")+").", "err"); return; }
-  await fusionarModelos(d.modelos_armas);
+  await fusionarModelos(d.modelos_armas); await fusionarRituales(d.rituales_cronica);
   evento("personaje_importado", {pj:id, nombre:f.nombre, como_jugador:jug});
   await cambiarPersonaje(id);
   sysMsg(jug ? `Hoja de ${f.nombre} abierta. Está en el menú, en «Soy narrador».` : `${f.nombre} importado.`, "rule");
@@ -2199,6 +2228,288 @@ function bloqueoSenda(f, d, k, actual){
   if(k === "corrupcion" && actual + 1 > (f.habilidades?.subterfugio || 0)) return `La Senda de la Corrupción no puede pasar tu Subterfugio (${f.habilidades?.subterfugio || 0}).`;
   return "";
 }
+/* ---------- Rituales del manual (V20: Taumaturgia pág. 229-240, Necromancia pág. 179-186) ----------
+   [nombre, nivel, tiempo, costo, ingredientes, qué hace]. Todos se activan con Inteligencia + Ocultismo (dif. 3 + nivel, máx. 9); un éxito alcanza.
+   Para usar uno hace falta tener la Disciplina en un nivel igual o mayor; se aprenden de un maestro, un libro o un pergamino (sin costo en experiencia). */
+const RITUALES_BASE = {
+  taumaturgia:[
+    ["Atar la Lengua Acusadora",1,"","","Retrato del objetivo, un mechón de su pelo y un cordón de seda negra","El blanco no puede hablar mal de vos salvo que saque más éxitos que los tuyos en Fuerza de Voluntad (dif. tu Taumaturgia + 3). Dura hasta que lo logre o se desate el cordón."],
+    ["Comunicación con el Sire del Vástago",1,"30 minutos","","Un objeto que perteneció a tu Sire","Hablás telepáticamente con tu Sire a cualquier distancia, 10 minutos por éxito."],
+    ["Defensa del Refugio Sagrado",1,"1 hora","1 Sangre","Símbolos dibujados con tu Sangre en ventanas y puertas","Impide que entre la luz del sol en 6 m a la redonda mientras te quedes dentro."],
+    ["Despertar con la Frescura de la Tarde",1,"","","Cenizas de plumas quemadas donde dormís","Si hay peligro mientras dormís de día, despertás al instante y los dos primeros turnos ignorás los límites de dados por Humanidad. Se hace justo antes de dormir."],
+    ["Desviación de la Muerte de Madera",1,"1 hora","","Círculo continuo de madera a tu alrededor y una astilla bajo la lengua","La primera estaca que intente atravesarte el corazón se desintegra en la mano del atacante. Dura hasta el próximo amanecer o anochecer."],
+    ["Disponer la Vasija de Transferencia",1,"3 horas (−15 min por éxito)","1 Sangre","Recipiente de una taza a 4 litros, sellado con tu Sangre y un símbolo hermético","El recipiente cambia su contenido por la sangre de quien lo toque con piel desnuda. Sirve para Vincular a escondidas o sacar muestras."],
+    ["Dominó de la Vida",1,"","","Un frasco de sangre humana fresca","Durante una noche simulás un rasgo humano (comer, respirar, temperatura, piel): +1 dado para pasar por mortal."],
+    ["Ensalmo del Pastor",1,"","","Un objeto de cristal sobre los ojos","Sentís dirección y distancia de todo tu Rebaño (o de los 3 mortales más cercanos que te dieron de comer 3 veces). Alcance: 15 km por punto de Rebaño, 8 km sin el Trasfondo."],
+    ["Éxtasis de Sangre",1,"1 turno","","Un colmillo de animal depredador","Sentís el placer de beber sangre y resistís los Frenesíes por hambre durante una hora."],
+    ["Iluminar el Rastro de la Presa",1,"","","Una cinta de raso blanca que llevaste 24 horas, quemada","Ves brillar la ruta de alguien (tenés que conocer su nombre o imagen), más fuerte cuanto más reciente. Se corta si camina por agua o llega a destino."],
+    ["Pureza de la Carne",1,"","1 Sangre","Tierra o roca desnuda y un círculo de 13 piedras afiladas","Expulsás de tu cuerpo todo lo ajeno: drogas, veneno, balas, tatuajes, joyas y ropa. No saca encantamientos, control mental ni enfermedades de la Sangre."],
+    ["Rencor de la Viuda",1,"","","Una muñeca de cera o trapo parecida al blanco","Provoca dolor o escozor, no mortal, en la parte del cuerpo que elijas."],
+    ["Toque del Diablo",1,"","","Una moneda de poco valor puesta en su bolsillo o zapato","Un mortal presente queda marcado una noche: todos lo tratan con desprecio. No funciona con vampiros."],
+    ["Bombardeo de Máquinas",2,"","","Un trozo de chatarra metálica oxidada","Mientras te concentrás, detenés motores, borrás discos, drenás baterías y apagás cualquier aparato más complejo que una polea. No las controlás, y parece una casualidad."],
+    ["Camino de la Sangre",2,"3 horas (−15 min por éxito)","1 Sangre del objetivo","Una muestra de sangre de otro vampiro","Cada éxito remonta una Generación del linaje del Vástago (hasta la 4ª) con nombre y cara del ancestro, y sabés su Generación y clan. Con 3 éxitos, también sus Vínculos de Sangre."],
+    ["Círculo de Protección contra Ghouls",2,"normal (la noche) o toda la noche (un año y un día)","3 Sangre mortal + 1 Sangre por cada 3 m de radio","Sangre mortal","Un círculo (3 m por defecto) que un Ghoul no puede cruzar sin sacar más éxitos de Fuerza de Voluntad que vos (dif. tu Taumaturgia + 3); si falla, 3 dados contundentes."],
+    ["Filo Ardiente",2,"","3 Sangre y 1 nivel letal propio","Un arma cuerpo a cuerpo (te cortás la palma con ella)","Los próximos ataques que impacten con el arma (uno por éxito) hacen daño agravado a criaturas sobrenaturales."],
+    ["Foco Principal de Infusión de Vitae",2,"","1 Sangre","Un objeto que quepa en ambas manos","Guarda 1 Sangre en el objeto. Con la mente lo deshacés en un charquito de Sangre. Puede hacerse para un aliado con tu propia Sangre."],
+    ["Ojos del Halcón Nocturno",2,"","","Un ave rapaz que tocás; al final le arrancás los ojos","Ves y oís a través del ave y controlás adónde vuela. Si no le sacás los ojos al terminar, quedás ciego 3 noches. Dura hasta el amanecer."],
+    ["Ponerse la Máscara de Sombras",2,"+5 min por cada objetivo extra","","","Volvés translúcidos a tantos objetivos como tu Ocultismo: se ven oscuros y silenciosos. Solo los detecta quien supere Ofuscación 3. Dura horas igual a los éxitos."],
+    ["Protección contra Ghouls",2,"","1 Sangre","Un glifo en el objeto a proteger","Un Ghoul que toque el objeto sufre 3 dados letales (y gasta 1 FV para volver a tocarlo). Protege un solo objeto."],
+    ["Remedio de la Patria",2,"","2 Sangre","Un puñado de tierra de tu ciudad natal y recitar tu árbol genealógico humano","Un ungüento que cura 1 nivel agravado, uno por noche, solo a quien conoce el ritual."],
+    ["Adherencia del Insecto",3,"","","Una araña viva bajo la lengua","Caminás por paredes y techos a media velocidad durante la escena."],
+    ["Asistente Sanguíneo",3,"","5 Sangre","Un recipiente de barro y tu sangre","Conjurás un ayudante de 30 cm armado con cosas pequeñas, una noche por éxito. Se puede reanimar con otra aplicación del ritual."],
+    ["Astil de Sosiego Retardado",3,"5 horas (−30 min por éxito)","3 Sangre","Una estaca de serbal ennegrecida en un fuego de roble","Al clavarla, la punta se rompe y avanza hacia el corazón en minutos o noches. Excluyente con Astilla Servidora."],
+    ["Carne de Roce Ígneo",3,"2 horas (−10 min por éxito)","1 nivel agravado propio","Un ascua que te tragás","Hasta el próximo ocaso, quien te toque la piel se quema: 1 nivel agravado (absorción dif. 6)."],
+    ["Espejo de la Segunda Visión",3,"","1 Sangre","Un espejo oval de 10 a 45 cm","El espejo muestra la verdadera forma de lupinos, magos y fantasmas, y a veces la Fe Verdadera."],
+    ["Paso Incorpóreo",3,"","","Un fragmento de espejo que refleje tu imagen","Te volvés inmaterial: atravesás paredes en línea recta e ignorás ataques físicos, tantas horas como éxitos en Astucia + Supervivencia (dif. 6). Apartar el espejo lo corta."],
+    ["Pavés de la Presencia Inmunda",3,"","","","Los efectos de Presencia que se usen sobre vos se invierten contra quien los usa: uno por éxito, hasta el amanecer. No afecta poderes pasivos como Majestad."],
+    ["Protección contra Lupinos",3,"","","Un puñado de polvo de plata","Como Protección contra Ghouls, pero daña a los hombres lobo."],
+    ["Círculo de Protección contra Lupinos",3,"normal o toda la noche","más Sangre mortal que el de Ghouls","Polvo de plata, en mayor cantidad","Como el Círculo contra Ghouls, pero contra lupinos."],
+    ["Astilla Servidora",4,"12 horas (−1 por éxito)","","Estaca de un árbol nutrido de muertos, atada con un cordón de belladona y sellada con cera","Al desatar el cordón y darle la orden, la estaca ataca sola al corazón del blanco (dados = tu Astucia + Ocultismo). Sin orden, ataca al ser más cercano. Excluyente con Astil de Sosiego."],
+    ["Caminante sobre Fuego",4,"","","Cortarte la punta de un dedo (tirada de FV)","Durante una hora absorbés el daño por fuego con tu Resistencia (+ Fortaleza). Se puede usar sobre otro vampiro."],
+    ["Corazón de Piedra",4,"9 horas (−1 por éxito)","1 nivel agravado propio","Acostarte desnudo sobre piedra con una vela sobre el corazón","Tu corazón se vuelve piedra y casi no te afectan las estacas, a cambio de efectos secundarios en tus emociones. Solo en vos."],
+    ["Hueso de Mentiras",4,"","10 Sangre (1 por mentira)","Un hueso de mortal de al menos 200 años","Quien lo sostiene tiene que decir la verdad. Cada mentira que quiera contar gasta 1 de las 10 Sangre del hueso."],
+    ["Protección contra Vástagos",4,"","1 Sangre tuya","Un glifo en el objeto","Como Protección contra Ghouls, pero daña a los vampiros."],
+    ["Círculo de Protección contra Vástagos",4,"normal o toda la noche","más Sangre que el de Ghouls","Los mismos que Protección contra Vástagos, en mayor cantidad","Como el Círculo contra Ghouls, pero contra vampiros."],
+    ["Carne de Papel",5,"","","","Resistencia y Fortaleza del blanco caen a 1 (conserva 1 punto más por cada Generación por debajo de la 8ª). Una noche."],
+    ["Contrato de Sangre",5,"3 noches","1 Sangre","Un contrato escrito con tu Sangre y firmado con la de cada parte","Un acuerdo inquebrantable: se cumple o se quema el documento. Conviene que lo maneje el Narrador."],
+    ["Encantar Talismán",5,"6 horas por noche durante un ciclo lunar completo","1 Sangre por noche","Un objeto personal grabado con runas herméticas","Creás tu talismán (la vara del mago), que amplifica tu voluntad taumatúrgica. Tirada extendida de Inteligencia + Ocultismo (dif. 8): 20 éxitos en 4 tiradas, una por semana."],
+    ["Escapar hacia un Verdadero Amigo",5,"6 horas por noche durante 6 noches (−1 noche cada 2 éxitos)","3 Sangre por noche","Un círculo de 1 m grabado a fuego en el suelo","Entrando al círculo y diciendo su nombre, viajás al instante hasta tu amigo más fiel, con una persona o carga de tu peso."],
+    ["Protección contra Espíritus",5,"","","Un puñado de sal marina pura","Como Protección contra Ghouls, pero daña a los espíritus. Hay versiones contra Fantasmas y contra Demonios."],
+    ["Círculo de Protección contra Espíritus, Fantasmas y Demonios",5,"normal o toda la noche","más Sangre que el de Ghouls","Sal marina pura, en mayor cantidad","Como el Círculo contra Ghouls, pero contra espíritus, fantasmas o demonios (se aprende cada uno por separado)."]],
+  necromancia:[
+    ["Espejo Humeante",1,"","1 Sangre","Un espejo de obsidiana de borde afilado y tu Vitae","Durante la escena elegís: Visión de Vida (leés auras como Percepción del Aura) o Visión de Muerte (ves fantasmas, las Tierras de las Sombras y las manchas del Olvido en los vivos)."],
+    ["Faro Ultraterreno",1,"15 minutos","","Una esfera de 1,5 cm hecha con la cera de una vela verde","Quien la lleve brilla en las Tierras de las Sombras y los poderes de los fantasmas le afectan más. Una hora por éxito."],
+    ["Llamada de los Muertos Hambrientos",1,"10 minutos","","Un pelo del objetivo, quemado en una vela negra","El blanco oye conversaciones del otro lado del Manto; si no lo espera, puede enloquecer un rato."],
+    ["Minestra di Morte",1,"","1 Sangre (medio litro de Vitae)","Un pedazo del cadáver, romero, albahaca y sal, hervidos con Vitae","Comés el guiso y sabés si esa persona se volvió wraith, Espectro o ambos."],
+    ["Piedra Sapiente",1,"","1 Sangre (la renovás cada Todos los Santos)","Tu Sangre y una piedra con el nombre del objetivo","Bailando en trance junto a la piedra sabés dónde está esa persona, incluso después de muerta."],
+    ["Última Visión",1,"","","Mirar a los ojos de un cadáver","Ves durante 5 minutos lo último que vio el muerto; los éxitos dan claridad. No sirve con Golconda, sin ojos o con descomposición avanzada. Un fracaso te muestra tu propia Muerte Definitiva."],
+    ["Dos Céntimos",2,"","","Peniques sobre los ojos de un mortal \"muerto\" ceremonialmente","El alma del mortal viaja al Inframundo y te cuenta lo que ve, sin poder afectar nada. Puede ser voluntario o usarse para aterrorizar."],
+    ["Mano de Gloria",2,"2 semanas de preparación","","La mano de un ahorcado, curada con sal, salitre y pimienta, con los dedos untados en grasa y encendidos","Todos los mortales de la vivienda caen en un sueño profundo (\"Que los que duermen, duerman, y que los que velan, velen\")."],
+    ["Occhio d'Uomo Morto",2,"","","El ojo de un cadáver que se volvió fantasma o Espectro, en Luna nueva","Te arrancás un ojo y ponés el del muerto: tenés Visión del Manto de forma permanente. Con ojo de Espectro, oís los cuchicheos de Espectros cercanos."],
+    ["Ojos de la Tumba",2,"2 horas","","Un pellizco de tierra de un sepulcro reciente","Durante una semana el blanco tiene visiones de su propia muerte; si falla Coraje (dif. 7), queda incapacitado por el pánico."],
+    ["Ritual de Pochtli",2,"","","Un mortal inmovilizado con incisiones de símbolos blasfemos, del que beben varios necromantes","No se hace solo: acompaña a otro ritual o Senda necromántica y los necromantes que participan suman sus éxitos."],
+    ["Títere",2,"1 hora","","Tierra de una tumba en párpados, labios y frente del objetivo","Prepara a alguien como recipiente: un fantasma que intente poseerlo esa noche tiene 2 éxitos automáticos."],
+    ["Danza de la Sangre",3,"2 horas","","Arena de colores y sal marina dibujadas en el suelo","Un fantasma se aparece dentro del dibujo y habla con un familiar vivo durante una hora."],
+    ["Estruendo de los Condenados",3,"30 minutos","","Ceniza de crematorio en una línea por las paredes de una habitación","Protege el cuarto del espionaje el resto de la noche: quien escuche tiene que sacar más éxitos que vos en Percepción + Ocultismo (dif. 7) o queda saturado de gemidos."],
+    ["Grillete Desenterrado",3,"3 horas","","La falange del fantasma, su nombre y una esquirla de lápida","El hueso se vuelve una brújula hacia algo de vital importancia para ese fantasma (su Grillete)."],
+    ["Signo Divino",3,"","","La fecha de nacimiento del objetivo","Predecís su próximo paso. Con un fantasma equivale a tener uno de sus Grilletes."],
+    ["Tambores de Pesadilla",3,"","","Tu Sangre, un objeto personal del objetivo (que se quema) y tambores de piel humana","Los fantasmas embrujan los sueños del enemigo y lo enloquecen de a poco. Solo podés detenerlo."],
+    ["Tempesta Scudo",3,"un turno de baile","1 Sangre y 1 nivel contundente propio","Danza (Destreza + Interpretación, dif. 7; 6 fuera de combate), morderte el labio y escupir en círculo","Las acciones de los fantasmas dentro del círculo tienen +2 a la dificultad."],
+    ["Bastone Diabolico",4,"","","Un hueso de pierna de un donante vivo, bañado en plomo y grabado con runas","Un bastón que se activa con 1 FV durante una escena: quita 1 de Pasión a los fantasmas que golpea y hace +1 dado agravado a muertos vivientes (no vampiros)."],
+    ["Escudriñar más allá del Manto",4,"1 hora","","Cornezuelo","Da 3 dosis que dan Visión del Manto tantas horas como tu Resistencia. Un fracaso las vuelve veneno: 8 dados letales."],
+    ["Muñeco Funesto",4,"4 a 5 horas (Resistencia + Artesanía, dif. 8)","","Un muñeco hecho a mano, con tu Sangre y ropa de la víctima","Herir al muñeco hace 6 dados contundentes al blanco; destruirlo, 6 letales."],
+    ["Toque del Cadáver",4,"3 horas","","Una muñeca de cera con la forma del objetivo, que se derrite","Un mortal se vuelve un despojo cadavérico (+2 a sus dificultades Sociales). Termina si la cera se solidifica; se corta si hierve."],
+    ["Ritual de Xipe Totec",4,"","","Una víctima a la que le sacás la piel superficial con una daga de obsidiana, y un recipiente dorado con su sangre, pulque y amaranto","Te ponés la piel de la víctima y absorbe tu Vitae: forma una segunda piel que te sirve de disfraz y te cura. Hace falta una estatura parecida."],
+    ["Aferrar lo Fantasmal",5,"6 horas","","Cánticos y un objeto material de masa parecida para reemplazar","Traés un objeto del Inframundo al mundo real. Solo sirven las reliquias (cosas recién destruidas) y se desvanecen al año."],
+    ["Esilio",5,"","","Pronunciar cinco sílabas de la lengua anterior a Babel (se puede improvisar)","Abre un desgarro entre el mundo y las profundidades del Inframundo. No se pronuncia a la ligera (ver el manual, pág. 185)."],
+    ["Frío del Olvido",5,"12 horas","","Un cubo de hielo de 30 cm fundiéndose sobre el pecho, acostado desnudo sobre tierra","El fuego y el calor te hacen daño letal en vez de agravado y podés apagar fuegos con Fuerza de Voluntad (dif. 9). Dura tantas noches como tu Ocultismo. Tiene inconvenientes."],
+    ["Mano de Hombre Muerto",5,"","2 Sangre por punto de Resistencia (y Fortaleza) de la víctima","Un trapo con su sangre, sudor o lágrimas, cerrado en una mano recién cortada","Según se descompone la mano, la víctima pierde niveles de Salud (cada 6 a 12 horas). Se frena sacando el trapo de la mano."]]
+};
+const RIT_ID = (d, n) => d.slice(0, 3) + "_" + norm(n).replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+const RITUALES = Object.entries(RITUALES_BASE).flatMap(([disc, l]) => l.map(([nombre, nivel, tiempo, costo, ingredientes, efecto]) => ({id:RIT_ID(disc, nombre), disc, nombre, nivel, tiempo, costo, ingredientes, efecto, origen:"manual"})));
+
+/* ---------- Rituales del personaje ----------
+   F.rituales: lista de {id, nombre, disc ("taumaturgia" | "necromancia" | "otra"), discNombre, nivel, tiempo, costo, ingredientes, efecto, tirada, nota, req, origen ("manual" | "propio"), aprendido}.
+   Los propios de la crónica (los que inventa un Narrador) se pueden guardar en RIT_USR para que los aprendan otros personajes; viajan en exportaciones, respaldos y paquetes. */
+const DISC_RIT = {taumaturgia:"Taumaturgia", necromancia:"Necromancia"};
+const DISCIPLINAS_TODAS = ["animalismo","auspex","celeridad","dementacion","dominacion","extincion","fortaleza","necromancia","obtenebracion","ofuscacion","potencia","presencia","protean","quimerismo","serpentis","taumaturgia","vicisitud"];
+const discRit = r => DISC_RIT[r.disc] || String(r.discNombre || "").trim() || "Otra Disciplina";
+const ordenRit = (a, b) => discRit(a).localeCompare(discRit(b)) || a.nivel - b.nivel || a.nombre.localeCompare(b.nombre);
+const nombreSendaId = id => { const [d, k] = String(id).split("/"); return k === SENDA_PRIM[d]?.[0] ? SENDA_PRIM[d][1] : SENDAS[d]?.[k]?.nombre || id; };
+const sendaNivelDe = (f, d, k) => k === SENDA_PRIM[d]?.[0] ? Math.min(5, f.disciplinas?.[d] || 0) : (f.sendas?.[d]?.[k] || 0);
+// Requisitos: los del manual piden la Disciplina en su nivel; los propios pueden sumar Senda, clan u otra Disciplina.
+const reqRitual = r => [...(DISC_RIT[r.disc] ? [{t:"disciplina", id:r.disc, min:r.nivel}] : []), ...(Array.isArray(r.req) ? r.req : [])];
+const nombreClanId = id => CLANES.find(c => c[1] === id)?.[0] || id;
+const textoReq = q => q.t === "disciplina" ? `${lab(q.id)} ${q.min}` : q.t === "senda" ? `${nombreSendaId(q.id)} ${q.min}` : `ser del clan ${nombreClanId(q.id)}`;
+function faltaRit(f, r){
+  const out = [];
+  for(const q of reqRitual(r)){
+    if(q.t === "disciplina"){ const n = f.disciplinas?.[q.id] || 0; if(n < q.min) out.push(`${lab(q.id)} ${q.min} (tenés ${n})`); }
+    else if(q.t === "senda"){ const [d, k] = String(q.id).split("/"), n = sendaNivelDe(f, d, k); if(n < q.min) out.push(`${nombreSendaId(q.id)} ${q.min} (tenés ${n})`); }
+    else if(q.t === "clan" && f.clan !== q.id) out.push(textoReq(q));
+  }
+  return out;
+}
+const tiradaRit = r => r.tirada || `Inteligencia + Ocultismo (dif. ${Math.min(9, 3 + r.nivel)})`;
+let RIT_USR = [];
+async function guardarRituales(){ try { await DB.doc("rituales_cronica/lista").set({items:clonar(RIT_USR)}); } catch(e){ sysMsg("No se pudo guardar el ritual ("+(e.code||"error")+").", "err"); } }
+// Deja pasar solo rituales bien formados (vienen de archivos y paquetes de afuera).
+function ritualValido(x){
+  if(!x || typeof x !== "object" || Array.isArray(x)) return null;
+  const t = (v, n) => String(v ?? "").trim().slice(0, n), nombre = t(x.nombre, 120), efecto = t(x.efecto, 2000);
+  if(!nombre || !efecto) return null;
+  const disc = ["taumaturgia","necromancia","otra"].includes(x.disc) ? x.disc : "otra", nivel = Math.max(1, Math.min(10, Math.round(Number(x.nivel)) || 1));
+  const req = (Array.isArray(x.req) ? x.req : []).filter(q => q && ["disciplina","senda","clan"].includes(q.t) && typeof q.id === "string").slice(0, 8)
+    .map(q => ({t:q.t, id:q.id.slice(0, 60), min:q.t === "clan" ? 0 : Math.max(1, Math.min(10, Math.round(Number(q.min)) || 1))}));
+  return {id:idValido(x.id) ? x.id : "r_" + norm(nombre).replace(/[^a-z0-9]/g, "").slice(0, 30), nombre, disc, ...(disc === "otra" ? {discNombre:t(x.discNombre, 60)} : {}), nivel,
+    tiempo:t(x.tiempo, 120), costo:t(x.costo, 120), ingredientes:t(x.ingredientes, 400), efecto, tirada:t(x.tirada, 200), nota:t(x.nota, 600), req, origen:"propio"};
+}
+async function fusionarRituales(lista){
+  if(!Array.isArray(lista)) return 0;
+  let n = 0;
+  for(const x of lista){ const r = ritualValido(x); if(!r) continue; const i = RIT_USR.findIndex(y => y.id === r.id); if(i >= 0) RIT_USR[i] = r; else RIT_USR.push(r); n++; }
+  if(n) await guardarRituales();
+  return n;
+}
+function aprenderRitual(c, igual = false){
+  if((F.rituales ||= []).some(r => r.id === c.id)) return null;
+  const r = {...clonar(c), aprendido:{noche:MUNDO.noche ?? null, fecha:new Date().toISOString()}};
+  F.rituales.push(r);
+  evento("ritual_aprendido", {ritual:r.nombre, disciplina:discRit(r), nivel:r.nivel, sin_requisitos:!!igual});
+  anotarMesa(`Aprende el ritual «${r.nombre}» (${discRit(r)} ${r.nivel})${igual ? " con permiso del Narrador" : ""}`);
+  guardarFicha(); if(!$("#s-inv").hidden) renderInv();
+  return r;
+}
+const filaRit = (t, v) => v ? `<div class="rit-kv"><small>${t}</small><span>${esc(v)}</span></div>` : "";
+function detalleRit(r){
+  const reqs = (r.req || []).map(textoReq).join(" · ");
+  return filaRit("Tirada", tiradaRit(r)) + filaRit("Tiempo", r.tiempo) + filaRit("Costo", r.costo) + filaRit("Ingredientes", r.ingredientes) + filaRit("Requisitos", reqs) + `<p class="rit-ef">${esc(r.efecto)}</p>` + (r.nota ? `<p class="pen" style="margin:0">${esc(r.nota)}</p>` : "");
+}
+const tarjetaRit = (r, mesa) => { const falta = faltaRit(F, r);
+  return `<details class="fold rit" data-rit="${esc(r.id)}"><summary><span class="rit-n"><b>${esc(r.nombre)}</b><small>${esc(discRit(r))}${r.origen === "propio" ? " · de la crónica" : ""}</small></span>${dots(r.nivel, Math.max(5, r.nivel))}</summary>
+    <div class="fold-in">${falta.length ? `<p class="err" style="margin:0">Hoy no cumplís: ${esc(falta.join(", "))}.</p>` : ""}${detalleRit(r)}
+    ${mesa ? `<div class="row"><button class="btn ghost" type="button" data-rit-t="${esc(r.id)}">Preparar tirada</button>${r.origen === "propio" ? `<button class="btn ghost" type="button" data-rit-e="${esc(r.id)}">Editar</button>` : ""}<button class="btn ghost" type="button" data-rit-x="${esc(r.id)}">Olvidar</button></div>` : ""}</div></details>`; };
+function ritualesHTML(mesa){
+  const lista = [...(F.rituales || [])].sort(ordenRit), por = {};
+  lista.forEach(r => (por[discRit(r)] ||= []).push(r));
+  return `<section class="blk" id="rit-blk"><div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px"><h2 style="margin:0">Rituales</h2>${mesa ? '<button class="btn ghost" type="button" id="rit-add">+ Ritual</button>' : ""}</div>
+    ${lista.length ? Object.entries(por).map(([n, rs]) => `<div class="sec-lbl">${esc(n)}</div><div class="folds">${rs.map(r => tarjetaRit(r, mesa)).join("")}</div>`).join("")
+      : `<p class="pen">${mesa ? "Todavía no aprendiste ningún ritual. Tocá «+ Ritual» para elegir uno del manual o armar uno propio." : "Todavía no aprendiste ningún ritual."}</p>`}</section>`;
+}
+function enlazarRituales(mesa){
+  if(!mesa) return;
+  const add = $("#rit-add"); if(add) add.onclick = () => abrirRitual();
+  const buscar = id => (F.rituales || []).find(r => r.id === id);
+  document.querySelectorAll("[data-rit-t]").forEach(b => b.onclick = () => { const r = buscar(b.dataset.ritT); if(!r) return;
+    Object.assign(J, {atajo:null, esp:null, a:"inteligencia", b:"ocultismo", dif:String(Math.min(9, 3 + r.nivel)), mod:0, fv:false, sumaDisc:true, espec:false});
+    mostrarPestana("chat"); avisoJuego(`Tirada lista: Inteligencia + Ocultismo, dif. ${J.dif}`); });
+  document.querySelectorAll("[data-rit-e]").forEach(b => b.onclick = () => { const r = buscar(b.dataset.ritE); if(r) abrirRitual("nuevo", r); });
+  document.querySelectorAll("[data-rit-x]").forEach(b => b.onclick = () => {
+    if(!b.dataset.ok){ b.dataset.ok = "1"; b.textContent = "Tocá de nuevo para olvidarlo"; return; }
+    const r = buscar(b.dataset.ritX); if(!r) return;
+    F.rituales = F.rituales.filter(x => x.id !== r.id); evento("ritual_olvidado", {ritual:r.nombre}); anotarMesa(`Olvida el ritual «${r.nombre}»`); guardarFicha(); renderInv(); });
+}
+// Hoja para agregar: del manual, de la crónica (los guardados) o uno propio. También edita uno propio.
+function abrirRitual(vistaIni = "manual", editar = null){
+  const tengo = d => (F.disciplinas?.[d] || 0) > 0;
+  const Q = {vista:editar ? "nuevo" : vistaIni, disc:!tengo("taumaturgia") && tengo("necromancia") ? "necromancia" : "taumaturgia", q:"", nivel:0, aviso:""};
+  const R = editar ? clonar(editar) : {nombre:"", disc:Q.disc, discNombre:"", nivel:1, tiempo:"", costo:"", ingredientes:"", efecto:"", tirada:"", nota:"", req:[]};
+  R.req ||= [];
+  let guardarCron = editar ? RIT_USR.some(x => x.id === editar.id) : true;
+  const sabe = id => (F.rituales || []).some(r => r.id === id);
+  const fila = (c, enCron) => { const falta = faltaRit(F, c), ya = sabe(c.id);
+    return `<details class="fold rit"><summary><span class="rit-n"><b>${esc(c.nombre)}</b><small>${esc(discRit(c))} · nivel ${c.nivel}</small></span>${ya ? '<span class="rit-chip ok">Lo sabés</span>' : falta.length ? '<span class="rit-chip">Te falta algo</span>' : ""}</summary>
+      <div class="fold-in">${!ya && falta.length ? `<p class="err" style="margin:0">Necesitás: ${esc(falta.join(", "))}. Podés aprenderlo igual si el Narrador lo permite.</p>` : ""}${detalleRit(c)}
+      <div class="row">${enCron ? `<button class="btn ghost" type="button" data-rq-e="${esc(c.id)}">Editar</button><button class="btn ghost" type="button" data-rq-b="${esc(c.id)}">Quitar de la crónica</button>` : ""}
+      ${ya ? "" : `<button class="btn" type="button" data-rq-a="${esc(c.id)}" data-rq-o="${enCron ? "c" : "m"}">${falta.length ? "Aprender igual" : "Aprender"}</button>`}</div></div></details>`; };
+  const pintarLista = () => {
+    const caja = $("#rq-lista"); if(!caja) return;
+    const enCron = Q.vista === "cronica", b = norm(Q.q);
+    let L = enCron ? RIT_USR.filter(c => true) : RITUALES.filter(c => c.disc === Q.disc);
+    if(Q.nivel) L = L.filter(c => c.nivel === Q.nivel);
+    if(b) L = L.filter(c => norm(c.nombre).includes(b) || norm(c.efecto).includes(b));
+    L = [...L].sort(ordenRit);
+    const niveles = [...new Set(L.map(c => c.nivel))];
+    caja.innerHTML = !L.length ? `<p class="pen">${enCron && !RIT_USR.length ? "Acá aparecen los rituales propios que guardes (por ejemplo, los que inventa tu Narrador). También llegan desde un paquete de crónica." : "No hay rituales con ese filtro."}</p>`
+      : niveles.map(n => `<div class="sec-lbl">Nivel ${n}</div><div class="folds">${L.filter(c => c.nivel === n).map(c => fila(c, enCron)).join("")}</div>`).join("");
+    caja.querySelectorAll("[data-rq-a]").forEach(bt => bt.onclick = () => {
+      const c = (bt.dataset.rqO === "c" ? RIT_USR : RITUALES).find(x => x.id === bt.dataset.rqA); if(!c) return;
+      const igual = faltaRit(F, c).length > 0, r = aprenderRitual(c, igual); if(r) avisoJuego(`Aprendiste «${r.nombre}»`); const ab = [...caja.querySelectorAll("details")].map(d => d.open); pintarLista(); caja.querySelectorAll("details").forEach((d, i) => d.open = ab[i]); });
+    caja.querySelectorAll("[data-rq-e]").forEach(bt => bt.onclick = () => { const c = RIT_USR.find(x => x.id === bt.dataset.rqE); if(c){ Object.keys(R).forEach(k => delete R[k]); Object.assign(R, {req:[], ...clonar(c)}); editar = c; guardarCron = true; Q.prev = Q.vista; Q.vista = "nuevo"; pintar(); } });
+    caja.querySelectorAll("[data-rq-b]").forEach(bt => bt.onclick = async () => {
+      if(!bt.dataset.ok){ bt.dataset.ok = "1"; bt.textContent = "Tocá de nuevo para quitarlo"; return; }
+      RIT_USR = RIT_USR.filter(x => x.id !== bt.dataset.rqB); await guardarRituales(); pintarLista(); });
+  };
+  const reqOpts = t => t === "disciplina" ? DISCIPLINAS_TODAS.map(d => [d, lab(d)]) : t === "senda" ? Object.entries(SENDAS).flatMap(([d, m]) => [[d + "/" + SENDA_PRIM[d][0], SENDA_PRIM[d][1]], ...Object.entries(m).map(([k, x]) => [d + "/" + k, x.nombre])]) : CLANES.map(c => [c[1], c[0]]);
+  const pintarForm = () => {
+    const sel = (id, v, ops) => `<select id="${id}">${ops.map(([k, t]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
+    const defecto = DISC_RIT[R.disc] ? `${DISC_RIT[R.disc]} ${R.nivel}` : "";
+    $("#rq-lista").innerHTML = `<div class="rit-form">
+      <div class="field"><label for="rf-nombre">Nombre del ritual</label><input id="rf-nombre" value="${esc(R.nombre)}" placeholder="Ej.: Sello del Sótano de Barracas"></div>
+      <div class="jrow"><div class="field"><label for="rf-disc">Disciplina</label>${sel("rf-disc", R.disc, [["taumaturgia","Taumaturgia"],["necromancia","Necromancia"],["otra","Otra"]])}</div>
+        <div class="field"><label for="rf-nivel">Nivel</label><input id="rf-nivel" type="number" min="1" max="10" value="${R.nivel}"></div></div>
+      ${R.disc === "otra" ? `<div class="field"><label for="rf-dn">¿De qué Disciplina o tradición?</label><input id="rf-dn" value="${esc(R.discNombre || "")}" placeholder="Ej.: Ritae del Sabbat, Koldunismo…"></div>` : ""}
+      <div class="field"><label for="rf-efecto">Qué hace</label><textarea id="rf-efecto" placeholder="El efecto y cómo se resuelve">${esc(R.efecto)}</textarea></div>
+      <div class="field"><label for="rf-tirada">Tirada (opcional)</label><input id="rf-tirada" value="${esc(R.tirada)}" placeholder="Si no, se usa Inteligencia + Ocultismo, dif. 3 + nivel"></div>
+      <div class="jrow"><div class="field"><label for="rf-tiempo">Tiempo</label><input id="rf-tiempo" value="${esc(R.tiempo)}" placeholder="Ej.: 1 hora"></div>
+        <div class="field"><label for="rf-costo">Costo</label><input id="rf-costo" value="${esc(R.costo)}" placeholder="Ej.: 2 Sangre"></div></div>
+      <div class="field"><label for="rf-ingr">Ingredientes</label><input id="rf-ingr" value="${esc(R.ingredientes)}" placeholder="Ej.: tiza, sal gruesa, una foto"></div>
+      <div class="sec-lbl">Requisitos para aprenderlo</div>
+      ${defecto ? `<p class="pen" style="margin:0 0 6px">Siempre pide <span id="rf-def">${esc(defecto)}</span>. Sumá otros si hace falta.</p>` : ""}
+      ${R.req.map((q, i) => `<div class="rq-req">${sel("rq-t" + i, q.t, [["disciplina","Disciplina"],["senda","Senda"],["clan","Clan"]])}${sel("rq-i" + i, q.id, reqOpts(q.t))}
+        ${q.t === "clan" ? "<span></span>" : `<input id="rq-m${i}" type="number" min="1" max="10" value="${q.min}" aria-label="Nivel mínimo">`}<button class="btn ghost" type="button" data-rqx="${i}" aria-label="Quitar requisito">Quitar</button></div>`).join("")}
+      <button class="btn ghost" type="button" id="rf-req">+ Requisito</button>
+      <div class="field" style="margin-top:12px"><label for="rf-nota">Nota</label><textarea id="rf-nota" placeholder="Quién te lo enseñó, dónde lo aprendiste…">${esc(R.nota)}</textarea></div>
+      <label class="check"><input type="checkbox" id="rf-cron" ${guardarCron ? "checked" : ""}> Guardarlo entre los rituales de la crónica (para que otros personajes lo aprendan)</label>
+      <p class="err" id="rf-err" role="alert">${esc(Q.aviso)}</p>
+      <div class="row"><button class="btn ghost" type="button" id="rf-x">${editar ? "Cancelar" : "Volver"}</button><button class="btn" type="button" id="rf-ok">${editar ? ((F.rituales || []).some(r => r.id === editar.id) ? "Guardar cambios" : "Guardar en la crónica") : "Crear y aprender"}</button></div></div>`;
+    const v = (id, f) => { const e = $("#" + id); if(e) e.oninput = () => f(e.value); };
+    v("rf-nombre", x => R.nombre = x); v("rf-efecto", x => R.efecto = x); v("rf-tirada", x => R.tirada = x); v("rf-tiempo", x => R.tiempo = x); v("rf-costo", x => R.costo = x); v("rf-ingr", x => R.ingredientes = x);
+    v("rf-nota", x => R.nota = x); v("rf-dn", x => R.discNombre = x);
+    $("#rf-nivel").oninput = e => { R.nivel = Math.max(1, Math.min(10, Math.round(Number(e.target.value)) || 1)); const d = $("#rf-def"); if(d) d.textContent = `${DISC_RIT[R.disc]} ${R.nivel}`; };
+    $("#rf-disc").onchange = e => { R.disc = e.target.value; pintarForm(); };
+    $("#rf-cron").onchange = e => guardarCron = e.target.checked;
+    $("#rf-req").onclick = () => { R.req.push({t:"disciplina", id:"taumaturgia", min:1}); pintarForm(); };
+    R.req.forEach((q, i) => {
+      $("#rq-t" + i).onchange = e => { q.t = e.target.value; q.id = reqOpts(q.t)[0][0]; q.min = q.t === "clan" ? 0 : 1; pintarForm(); };
+      $("#rq-i" + i).onchange = e => q.id = e.target.value;
+      const m = $("#rq-m" + i); if(m) m.oninput = () => q.min = Math.max(1, Math.min(10, Math.round(Number(m.value)) || 1));
+    });
+    document.querySelectorAll("[data-rqx]").forEach(b => b.onclick = () => { R.req.splice(+b.dataset.rqx, 1); pintarForm(); });
+    $("#rf-x").onclick = () => { const enFicha = editar && (F.rituales || []).some(r => r.id === editar.id);
+      if(enFicha || (!editar && vistaIni === "nuevo")) return cerrarSheet();
+      editar = null; Q.vista = Q.prev || (vistaIni === "nuevo" ? "manual" : vistaIni); Q.aviso = ""; pintar(); };
+    $("#rf-ok").onclick = async () => {
+      const fallo = !R.nombre.trim() ? "Ponele un nombre al ritual." : !R.efecto.trim() ? "Contá qué hace, aunque sea en una línea." : R.disc === "otra" && !(R.discNombre || "").trim() ? "Decí de qué Disciplina o tradición es." : "";
+      if(fallo){ Q.aviso = fallo; $("#rf-err").textContent = fallo; return; }
+      const base = ritualValido({...R, nombre:R.nombre, id:editar?.id});
+      const enFicha = editar && (F.rituales || []).find(r => r.id === editar.id);
+      let hecho;
+      if(enFicha){ const ap = enFicha.aprendido; Object.keys(enFicha).forEach(k => delete enFicha[k]); Object.assign(enFicha, base, {aprendido:ap}); hecho = enFicha;
+        evento("ritual_editado", {ritual:base.nombre}); guardarFicha(); }
+      else if(editar){ base.id = editar.id; hecho = base; guardarCron = true; }
+      else { base.id = "r" + Date.now().toString(36); aprenderRitual(base, faltaRit(F, base).length > 0); hecho = base; }
+      if(guardarCron){ const i = RIT_USR.findIndex(x => x.id === base.id); if(i >= 0) RIT_USR[i] = clonar(base); else RIT_USR.push(clonar(base)); await guardarRituales(); }
+      else if(editar && RIT_USR.some(x => x.id === base.id)){ RIT_USR = RIT_USR.filter(x => x.id !== base.id); await guardarRituales(); }
+      if(!$("#s-inv").hidden) renderInv();
+      avisoJuego(enFicha || editar ? `«${hecho.nombre}» actualizado` : `Aprendiste «${hecho.nombre}»`); cerrarSheet(); };
+  };
+  const pintar = () => {
+    const vistas = [["manual","Del manual"],["cronica","De la crónica"],["nuevo","Uno propio"]];
+    $("#rq-body").innerHTML = `${editar ? "" : `<div class="seg3" role="radiogroup" aria-label="Qué agregar">${vistas.map(([k, t]) => `<button type="button" role="radio" aria-checked="${Q.vista === k}" data-rqv="${k}">${t}</button>`).join("")}</div>`}
+      ${Q.vista === "manual" ? `<div class="chips wrap" style="margin-top:10px">${Object.entries(DISC_RIT).map(([k, t]) => `<button type="button" class="chip" aria-pressed="${Q.disc === k}" data-rqd="${k}">${t}${tengo(k) ? "" : " (no la tenés)"}</button>`).join("")}</div>` : ""}
+      ${Q.vista !== "nuevo" ? `<div class="field" style="margin-top:10px"><label for="rq-q">Buscar</label><input id="rq-q" type="search" value="${esc(Q.q)}" placeholder="Nombre o efecto"></div>
+        <div class="chips wrap">${[0,1,2,3,4,5].map(n => `<button type="button" class="chip" aria-pressed="${Q.nivel === n}" data-rqn="${n}">${n ? "Nivel " + n : "Todos"}</button>`).join("")}</div>` : ""}
+      <div id="rq-lista" style="margin-top:6px"></div>
+      ${Q.vista === "nuevo" ? "" : '<div class="row" style="margin-top:12px"><button class="btn ghost" type="button" id="rq-cerrar">Cerrar</button></div>'}`;
+    document.querySelectorAll("[data-rqv]").forEach(b => b.onclick = () => { Q.vista = b.dataset.rqv; Q.aviso = ""; Q.q = ""; Q.nivel = 0; pintar(); });
+    document.querySelectorAll("[data-rqd]").forEach(b => b.onclick = () => { Q.disc = b.dataset.rqd; pintar(); });
+    document.querySelectorAll("[data-rqn]").forEach(b => b.onclick = () => { Q.nivel = +b.dataset.rqn; pintar(); });
+    const bq = $("#rq-q"); if(bq) bq.oninput = () => { Q.q = bq.value; pintarLista(); };
+    const cr = $("#rq-cerrar"); if(cr) cr.onclick = cerrarSheet;
+    if(Q.vista === "nuevo") pintarForm(); else pintarLista();
+  };
+  abrirSheet(`<h2>${editar ? "Editar ritual" : "Agregar ritual"}</h2><div id="rq-body"></div>`, pintar);
+}
+
+/* Rituales iniciales: el primer nivel de Taumaturgia o de Necromancia da un ritual de nivel uno sin costo (V20 pág. 213 y 163). */
+const ritIniHTML = () => ["taumaturgia","necromancia"].filter(d => totalRasgo("disciplina", d) > 0).map(d => {
+  const sel = W.ritIni?.[d] || "", pr = W.ritIniPropio?.[d] || {};
+  return `<div class="field"><label for="w-rit-${d}">Ritual inicial de ${DISC_RIT[d]}</label><select id="w-rit-${d}"><option value="">Lo elijo más adelante, en juego</option>${RITUALES.filter(c => c.disc === d && c.nivel === 1).map(c => `<option value="${c.id}" ${sel === c.id ? "selected" : ""}>${esc(c.nombre)}</option>`).join("")}<option value="propio" ${sel === "propio" ? "selected" : ""}>Uno propio de la crónica…</option></select></div>
+    ${sel === "propio" ? `<div class="field"><label for="w-ritn-${d}">Nombre del ritual</label><input id="w-ritn-${d}" value="${esc(pr.nombre || "")}"></div><div class="field"><label for="w-rite-${d}">Qué hace</label><textarea id="w-rite-${d}">${esc(pr.efecto || "")}</textarea></div>` : ""}`; }).join("");
+const ritIniBloque = () => { const h = ritIniHTML(); return h ? `<div class="cat"><div class="cat-h"><b>Rituales</b></div><p class="hint" style="margin:0 0 8px">Con el primer nivel de Taumaturgia o Necromancia se gana un ritual de nivel 1 sin costo. Los demás se aprenden en la historia, desde el Inventario.</p>${h}</div>` : ""; };
+function ritInicialesW(){
+  const out = [];
+  for(const d of ["taumaturgia","necromancia"]){
+    if(totalRasgo("disciplina", d) < 1) continue;
+    const v = W.ritIni?.[d] || ""; if(!v) continue;
+    const ap = {noche:null, fecha:new Date().toISOString(), inicial:true};
+    if(v === "propio"){ const pr = W.ritIniPropio?.[d] || {}, nombre = String(pr.nombre || "").trim(); if(!nombre) continue;
+      out.push({id:"r" + Date.now().toString(36) + d.slice(0, 2), nombre, disc:d, nivel:1, tiempo:"", costo:"", ingredientes:"", efecto:String(pr.efecto || "").trim() || "Ritual propio de la crónica.", origen:"propio", aprendido:ap}); }
+    else { const c = RITUALES.find(x => x.id === v); if(c) out.push({...clonar(c), aprendido:ap}); }
+  }
+  return out.length ? {rituales:out} : {};
+}
 function poderesFicha(d){
   let ult = null;
   return (F.poderes||[]).filter(p => p.disciplina === d).map(p => { const cab = p.senda && p.senda !== ult ? `<p class="pen sda">${esc(p.sendaNombre)}</p>` : ""; ult = p.senda || ult; return cab + poderHTML(p); }).join("");
@@ -2294,7 +2605,9 @@ function validarPaso(s){
     const eS = errSendasW(); if(eS) return eS;
     return "";
   }
-  if(s === 8) return W.sangre ? "" : "Tirá 1d10 para la Sangre inicial.";
+  if(s === 8){
+    for(const d of ["taumaturgia","necromancia"]) if(totalRasgo("disciplina", d) > 0 && W.ritIni?.[d] === "propio" && !String(W.ritIniPropio?.[d]?.nombre || "").trim()) return `Poné el nombre del ritual inicial de ${DISC_RIT[d]}, o elegí otra opción.`;
+    return W.sangre ? "" : "Tirá 1d10 para la Sangre inicial."; }
   return "";
 }
 // Lo que permite Recursos al crear el personaje (criterio del Narrador; el manual deja el monto a la mesa, pág. 117).
@@ -2490,7 +2803,7 @@ function renderWz(){
       <div class="field"><label for="w-refugio">Refugios (uno por línea; dejalo vacío si no tiene ninguno)</label><textarea id="w-refugio" placeholder="Un PH sin ventanas en Boedo&#10;Un depósito en Barracas">${esc(W.refugio)}</textarea></div>
       <div class="field"><label for="w-equipo">Equipo con el que empieza, ya equipado (uno por línea)</label><textarea id="w-equipo" placeholder="Celular&#10;Navaja&#10;Llaves del auto">${esc(W.equipo)}</textarea></div>
       <div class="field"><label for="w-dinero">Dinero en pesos</label><input id="w-dinero" type="number" min="0" step="1000" value="${W.dinero||0}"></div>
-      <div class="cat"><div class="cat-h"><b>Sangre inicial</b><span class="pen">1d10${totalRasgo("trasfondo","dominio") ? " + "+totalRasgo("trasfondo","dominio")+" por Dominio" : ""} · reserva máx. ${reserva}</span></div>
+      ${ritIniBloque()}<div class="cat"><div class="cat-h"><b>Sangre inicial</b><span class="pen">1d10${totalRasgo("trasfondo","dominio") ? " + "+totalRasgo("trasfondo","dominio")+" por Dominio" : ""} · reserva máx. ${reserva}</span></div>
         <div class="dice-actions"><div class="droll" id="w-dado" style="margin:4px 0">${W.sangre?`<div class="d10 hit">${W.sangre}</div>`:'<div class="d10">?</div>'}</div>
         <button class="btn" type="button" id="w-tirar" ${W.sangre?"disabled":""}>${W.sangre?"Tirado":"Tirar 1d10"}</button></div></div>`;
   }
@@ -2503,6 +2816,7 @@ function renderWz(){
       fila("Naturaleza / Conducta", `${esc(W.naturaleza)} / ${esc(W.conducta)}`) + fila("Atributos", lista(f.atributos)) + fila("Habilidades", lista(f.habilidades)) +
       fila("Disciplinas", lista(f.disciplinas)) + (f.sendas ? fila("Sendas secundarias", Object.entries(f.sendas).map(([d,o]) => Object.entries(o).map(([k,n]) => `${esc(SENDAS[d][k].nombre)} ${n}`).join(", ")).join(", ")) : "") + fila("Trasfondos", lista(f.trasfondos)) + fila("Virtudes", lista(f.virtudes)) +
       fila("Humanidad · FV · Sangre", `${f.humanidad} · ${f.fv_max} · ${f.sangre}/${GEN[f.generacion][1]}`) +
+      (f.rituales?.length ? fila("Rituales", f.rituales.map(x => esc(x.nombre)).join(", ")) : "") +
       fila("Méritos", W.myd.filter(x => x.tipo === "Mérito").map(x => esc(conDetalle(x))+" · "+x.puntos+(x.propio?" · propio":"")).join(", ") || "—") +
       fila("Defectos", W.myd.filter(x => x.tipo === "Defecto").map(x => esc(conDetalle(x))+" · "+x.puntos+(x.propio?" · propio":"")).join(", ") || "—") +
       fila(lineasRefugio().length === 1 ? "Refugio" : "Refugios", lineasRefugio().map(esc).join(", ") || "Ninguno") + fila("Equipo · Dinero", `${lineasEquipo().map(esc).join(", ") || "—"} · ${pesos(W.dinero)}`) +
@@ -2567,6 +2881,11 @@ function enlazarWz(wz){
     while(Date.now() - t0 < (reduce?80:700)){ caja.innerHTML = `<div class="d10 spin">${d10()}</div>`; await wait(70); }
     W.sangre = d10(); re(); };
   wz.querySelectorAll("[data-refclan]").forEach(b => b.onclick = mostrarClan);
+  for(const d of ["taumaturgia","necromancia"]){
+    const sl = $("#w-rit-" + d); if(sl) sl.onchange = e => { (W.ritIni ||= {})[d] = e.target.value; re(); };
+    const rn = $("#w-ritn-" + d); if(rn) rn.oninput = e => { ((W.ritIniPropio ||= {})[d] ||= {}).nombre = e.target.value; const e2 = validarPaso(W.step), n = $("#wz-next"); if(n) n.disabled = !!e2; const er = wz.querySelector(".err"); if(er) er.textContent = e2; };
+    const re2 = $("#w-rite-" + d); if(re2) re2.oninput = e => { ((W.ritIniPropio ||= {})[d] ||= {}).efecto = e.target.value; };
+  }
   const salirCreacion = () => { if(F) mostrarPestana("chat"); else pantallaVacia(); };
   const b = $("#wz-back"); if(b) b.onclick = () => { if(W.step === 0){
       if(![W.nombre, W.apodo, W.concepto, W.clan].some(x => String(x||"").trim())) return salirCreacion();
@@ -2593,7 +2912,7 @@ function armarFichaW(){
   defectos.push({id: W.clan === "seguidores_de_set" ? "debilidad_set" : "debilidad_"+W.clan, nombre:`Debilidad de clan (${c[0]})`,
     efecto: c[3] + (W.detalle ? " "+c[4].replace(/^¿|\?$/g,"")+": "+W.detalle+"." : "")});
   return {nombre:nombreCompuesto(), nombre_real:W.nombre.trim(), apodo:W.apodo.trim(), clan:W.clan, clan_nombre:c[0], generacion, concepto:W.concepto.trim(), naturaleza:W.naturaleza, conducta:W.conducta,
-    descripcion:W.desc.trim(), atributos:atr, habilidades:hab, disciplinas:dis, ...(Object.values(sendasW()).some(o => Object.keys(o).length) ? {sendas:Object.fromEntries(Object.entries(sendasW()).filter(([,o]) => Object.keys(o).length))} : {}), poderes:poderesDe(dis, sendasW()), trasfondos:tras, trasfondos_detalle:Object.fromEntries(Object.entries(W.trasDet).filter(([t,v]) => tras[t] && v.trim()).map(([t,v]) => [t, v.trim()])), virtudes:vir,
+    descripcion:W.desc.trim(), atributos:atr, habilidades:hab, disciplinas:dis, ...ritInicialesW(), ...(Object.values(sendasW()).some(o => Object.keys(o).length) ? {sendas:Object.fromEntries(Object.entries(sendasW()).filter(([,o]) => Object.keys(o).length))} : {}), poderes:poderesDe(dis, sendasW()), trasfondos:tras, trasfondos_detalle:Object.fromEntries(Object.entries(W.trasDet).filter(([t,v]) => tras[t] && v.trim()).map(([t,v]) => [t, v.trim()])), virtudes:vir,
     humanidad:Math.min(totalRasgo("humanidad"),10), fv_max:Math.min(totalRasgo("fuerza_voluntad"),10), fv:Math.min(totalRasgo("fuerza_voluntad"),10),
     sangre:Math.min((W.sangre||0) + totalRasgo("trasfondo","dominio"), reserva), salud:[], xp:0, xp_total:0, meritos, defectos, estado:"activo", vampiro:true,
     criterios:{umbral_hambre:7}, puntos_gratuitos:{...W.grat}, creado:new Date().toISOString()};
@@ -2610,7 +2929,7 @@ const ESTILO_DIRECTOR = `Sos el Director de una crónica de Vampiro: La Mascarad
 const corto = (s, n) => { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 function fichaCorta(f){
   return {nombre:f.nombre, clan:f.clan_nombre || lab(f.clan||""), generacion:f.generacion, concepto:f.concepto, naturaleza:f.naturaleza, conducta:f.conducta,
-    descripcion:f.descripcion, disciplinas:f.disciplinas, trasfondos:f.trasfondos, trasfondos_detalle:f.trasfondos_detalle || {},
+    descripcion:f.descripcion, disciplinas:f.disciplinas, ...(f.rituales?.length ? {rituales:f.rituales.map(x => x.nombre)} : {}), trasfondos:f.trasfondos, trasfondos_detalle:f.trasfondos_detalle || {},
     meritos:(f.meritos||[]).map(m => m.nombre), defectos:(f.defectos||[]).map(m => m.nombre), humanidad:f.humanidad};
 }
 function cuadernoParaDirector(){
@@ -3448,10 +3767,11 @@ function leerPaquete(d){
   const personajes = (Array.isArray(J.personajes) ? J.personajes : []).filter(x => x && x.ficha?.atributos && String(x.ficha.nombre || "").trim());
   const modelos = (Array.isArray(J.modelos_armas) ? J.modelos_armas : []).filter(m => m && ["fuego","cc"].includes(m.clase) && String(m.nombre || "").trim())
     .map(m => ({...m, id: idValido(m.id) ? m.id : "p_" + norm(m.nombre).replace(/[^a-z0-9]/g, "").slice(0, 30)}));
+  const rituales = (Array.isArray(J.rituales) ? J.rituales : []).map(ritualValido).filter(Boolean);
   const director = p.director?.cuaderno && typeof p.director.cuaderno === "object" && !Array.isArray(p.director.cuaderno) ? p.director : null;
-  if(!personajes.length && !modelos.length && !director) return {error:"El paquete está vacío."};
+  if(!personajes.length && !modelos.length && !rituales.length && !director) return {error:"El paquete está vacío."};
   return {meta:{nombre:String(meta.nombre || "Crónica sin nombre"), autor:String(meta.autor || ""), tipo:TIPOS_CRONICA.some(t => t.id === meta.tipo) ? meta.tipo : "libre", idea:String(meta.idea || "")},
-    premisa:String(J.premisa || meta.descripcion || ""), personajes, modelos, director};
+    premisa:String(J.premisa || meta.descripcion || ""), personajes, modelos, rituales, director};
 }
 function abrirPaquete(d){
   const p = leerPaquete(d);
@@ -3461,6 +3781,7 @@ function abrirPaquete(d){
   const ver = () => abrirSheet(`<h2>${esc(p.meta.nombre)}</h2>
     ${p.meta.autor ? `<p class="pen" style="margin:0 0 8px">de ${esc(p.meta.autor)}</p>` : ""}
     ${p.premisa ? `<p style="white-space:pre-wrap;margin:0 0 10px">${esc(p.premisa)}</p>` : ""}
+    ${p.rituales.length ? `<p class="pen">Trae ${p.rituales.length} ritual${p.rituales.length === 1 ? "" : "es"} propio${p.rituales.length === 1 ? "" : "s"} (${esc(p.rituales.map(m => m.nombre).join(", "))}). Quedan guardados para que tus personajes los aprendan.</p>` : ""}
     ${p.modelos.length ? `<p class="pen">Trae ${p.modelos.length} modelo${p.modelos.length === 1 ? "" : "s"} de arma (${esc(p.modelos.map(m => m.nombre).join(", "))}). Se suman a los tuyos.</p>` : ""}
     ${p.director ? `<div class="sec-lbl" style="margin-top:12px">Cómo querés jugarla</div>
       <div class="seg" role="radiogroup" aria-label="Cómo jugarla">
@@ -3469,14 +3790,15 @@ function abrirPaquete(d){
     ${p.personajes.length ? `<div class="sec-lbl" style="margin-top:12px">Personajes: elegí uno</div>
       ${p.personajes.map((x, i) => `<button class="menu-item" type="button" data-pp="${i}"><b>${esc(x.ficha.nombre)}</b><small>${esc([x.ficha.clan_nombre || (x.ficha.clan ? lab(x.ficha.clan) : ""), x.ficha.concepto].filter(Boolean).join(" · "))}</small></button>`).join("")}` : ""}
     ${ia && F ? `<button class="menu-item" type="button" id="pq-mio"><b>Usar la crónica con ${esc(F.nombre)}</b><small>Sin importar personajes: juega tu personaje actual.</small></button>` : ""}
-    ${p.modelos.length ? `<button class="menu-item" type="button" id="pq-mod"><b>Solo agregar los modelos de armas</b><small>No importa personajes ni crónica.</small></button>` : ""}
+    ${p.modelos.length || p.rituales.length ? `<button class="menu-item" type="button" id="pq-mod"><b>Solo agregar los ${p.modelos.length && p.rituales.length ? "modelos de armas y rituales" : p.rituales.length ? "rituales" : "modelos de armas"}</b><small>No importa personajes ni crónica.</small></button>` : ""}
     <p class="err" id="pq-err" role="alert"></p>
     <div class="row"><button class="btn ghost" type="button" id="pq-x">Cancelar</button></div>`, () => {
     $("#pq-x").onclick = cerrarSheet;
     document.querySelectorAll("[data-pq-modo]").forEach(b => b.onclick = () => { ia = b.dataset.pqModo === "ia"; ver(); });
     document.querySelectorAll("[data-pp]").forEach(b => b.onclick = () => importarPaquete(p, +b.dataset.pp, ia));
     const mio = $("#pq-mio"); if(mio) mio.onclick = () => importarPaquete(p, null, true);
-    const mod = $("#pq-mod"); if(mod) mod.onclick = async () => { const n = await fusionarModelos(p.modelos); cerrarSheet(); sysMsg(`${n} modelo${n === 1 ? "" : "s"} de arma agregado${n === 1 ? "" : "s"}.`, "rule"); };
+    const mod = $("#pq-mod"); if(mod) mod.onclick = async () => { const n = await fusionarModelos(p.modelos), m = await fusionarRituales(p.rituales); cerrarSheet();
+      sysMsg([n ? `${n} modelo${n === 1 ? "" : "s"} de arma` : "", m ? `${m} ritual${m === 1 ? "" : "es"}` : ""].filter(Boolean).join(" y ") + " agregado" + ((n + m) === 1 ? "" : "s") + ".", "rule"); };
   });
   ver();
 }
@@ -3498,7 +3820,7 @@ async function importarPaquete(p, i, ia){
       ["director/" + cid, {...clonar(p.director.cuaderno), importado:true}], ["cronica/" + cid, p.director.cronica?.noches ? clonar(p.director.cronica) : {noches:[]}]);
   }
   try {
-    await fusionarModelos(p.modelos);
+    await fusionarModelos(p.modelos); await fusionarRituales(p.rituales);
     for(const [ruta, x] of docs) await DB.doc(ruta).set(clonar(x));
   } catch(e){ const er = $("#pq-err"); if(er) er.textContent = "No se pudo importar (" + (e.code || e.message || "error") + ")."; return; }
   cerrarSheet();
@@ -4928,7 +5250,7 @@ async function mensajesDe(id){
 async function respaldarTodo(){
   if(!DB) return;
   cerrarSheet(); sysMsg("Armando el respaldo…", "", false);
-  const out = {formato:FORMATO_RESPALDO, version:1, exportado:new Date().toISOString(), personajes:[], cronicas:[], modelos_armas:clonar(MODELOS_USR)}, vistas = new Set();
+  const out = {formato:FORMATO_RESPALDO, version:1, exportado:new Date().toISOString(), personajes:[], cronicas:[], modelos_armas:clonar(MODELOS_USR), rituales_cronica:clonar(RIT_USR)}, vistas = new Set();
   const cronica = async cid => {
     if(vistas.has(cid)) return; vistas.add(cid);
     const [meta, director, cron] = await Promise.all([leerDoc("cronicas/" + cid), leerDoc("director/" + cid), leerDoc("cronica/" + cid)]);
@@ -4968,7 +5290,7 @@ async function restaurarRespaldo(d){
       if(c.director) await DB.doc("director/" + c.id).set(clonar(c.director));
       if(c.cronica) await DB.doc("cronica/" + c.id).set(clonar(c.cronica));
     }
-    await fusionarModelos(d.modelos_armas);
+    await fusionarModelos(d.modelos_armas); await fusionarRituales(d.rituales_cronica);
   } catch(e){ const er = $("#rb-err"); if(er) er.textContent = "No se pudo restaurar (" + (e.code || e.message || "error") + ")."; if(btn){ btn.disabled = false; btn.textContent = "Restaurar"; } return; }
   sysMsg(`Respaldo restaurado: ${d.personajes.length} personaje(s) y ${(d.cronicas || []).length} crónica(s).`, "rule", false);
   await cambiarPersonaje(d.personajes[0]?.id || PJ);
@@ -4977,6 +5299,7 @@ async function restaurarRespaldo(d){
 async function iniciar(){
   if(!(await conectar())) return sinBase(PLATAFORMA === "local" ? "No se pudo abrir el guardado de este navegador. Revisá que no esté en modo privado ni con el almacenamiento bloqueado." : "Abrí esta página dentro de claude.ai con tu sesión iniciada. Si te la compartieron, pedí permiso para usarla, no solo para verla.");
   try { MODELOS_USR = (await leerDoc("modelos_armas/lista"))?.items || []; } catch(_){}
+  try { RIT_USR = (await leerDoc("rituales_cronica/lista"))?.items || []; } catch(_){}
   if(!PJ){
     const mios = (await listarPersonajes()).filter(p => !p.hoja_de_jugador);
     if(!mios.length){ F = null; return pantallaVacia(); }
