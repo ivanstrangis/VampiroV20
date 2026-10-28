@@ -295,7 +295,10 @@ details.esp-arma{margin-top:16px}
 .barra3 .btn{padding:8px 4px;font-size:16px;white-space:nowrap}
 .arma{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
 .arma:first-of-type{border-top:0;margin-top:0;padding-top:0}
-.rep-fila{border-bottom:1px solid var(--line);margin-bottom:8px}.rep-l{margin:0 0 8px}.rep-l label{font-size:16px}
+.rep-fila{display:grid;grid-template-columns:auto 62px minmax(0,1fr) 40px;gap:6px;align-items:center;margin-bottom:8px}
+.rep-t{white-space:nowrap}.rep-fila .rep-n{width:100%;min-width:0}
+.rep-l{min-width:0;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:14px;color:var(--fg);font:inherit;font-size:16px;padding:6px 8px;text-overflow:ellipsis}
+.rep-fila button{height:40px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--fg);padding:0}
 .rep-n{width:70px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg);font:inherit;font-family:var(--mono);padding:4px 6px}
 .b4 .btn{white-space:normal;line-height:1.2}
 .mydsel{background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--fg);font:inherit;font-size:16px;padding:4px 6px}
@@ -4611,9 +4614,9 @@ function abrirObjeto(id, clase){
         <div class="jrow">${num("ob-cap", rev ? "Capacidad del tambor" : "Capacidad del cargador", A.capacidad_cargador, 1, 100)}${num("ob-car", rev ? "Balas en el tambor" : "Balas en el cargador", A.cargador, 0, A.capacidad_cargador)}</div>
         ${rev ? "" : `<label class="chk"><input type="checkbox" id="ob-rec" ${A.recamara?"checked":""}> Bala en la recámara</label>`}
         <div class="sec-lbl" style="margin-top:12px">${rev ? "Cargas de repuesto" : "Cargadores de repuesto"}</div>
-        ${reps.length ? `<p class="pen" style="margin:0 0 4px">Cada repuesto puede estar equipado o guardado en un refugio.</p>` : ""}
-        ${reps.map((r,i) => `<div class="rep-fila"><div class="arow"><span>Repuesto ${i+1}</span><span class="fb"><input type="number" class="rep-n" data-rep="${i}" min="0" max="${A.capacidad_cargador}" value="${r.balas}" aria-label="Balas del repuesto ${i+1}"><small>balas</small><button type="button" data-repq="${i}" aria-label="Quitar repuesto">×</button></span></div>
-          <div class="field rep-l"><label for="rep-l${i}">Dónde está el repuesto ${i+1}</label><select id="rep-l${i}" data-repl="${i}">${lugares(r.lugar || ENCIMA)}</select></div></div>`).join("") || '<p class="pen" style="margin:0">Ninguno.</p>'}
+        ${reps.length ? `<p class="pen" style="margin:0 0 4px">Balas de cada repuesto y dónde está: equipado o guardado en un refugio.</p>` : ""}
+        ${reps.map((r,i) => `<div class="rep-fila"><span class="rep-t">Repuesto ${i+1}</span><input type="number" class="rep-n" data-rep="${i}" min="0" max="${A.capacidad_cargador}" value="${r.balas}" aria-label="Balas del repuesto ${i+1}">
+          <select class="rep-l" id="rep-l${i}" data-repl="${i}" aria-label="Dónde está el repuesto ${i+1}">${lugares(r.lugar || ENCIMA)}</select><button type="button" data-repq="${i}" aria-label="Quitar repuesto ${i+1}">×</button></div>`).join("") || '<p class="pen" style="margin:0">Ninguno.</p>'}
         <button class="btn ghost" type="button" id="ob-rep" style="margin-top:6px">Agregar ${rev ? "carga" : "cargador"} lleno</button>`
       : cc ? `<div class="field"><label for="ob-modc">Modelo</label><select id="ob-modc">${opcionesModelo("cc", MODELOS_CC.map(m => [m.k, `${m.n} (Fuerza +${m.f}, ${m.t==="L"?"letal":"contundente"})`]), modSel)}</select></div>
         <div class="jrow">${num("ob-f","Daño: Fuerza +",A.dano_fuerza,0,6)}<div class="field"><label for="ob-td">Tipo de daño</label><select id="ob-td">${[["C","Contundente"],["L","Letal"],["A","Agravado"]].map(([k,t]) => `<option value="${k}" ${k===A.tipo_dano?"selected":""}>${t}</option>`).join("")}</select></div></div>`
