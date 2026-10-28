@@ -173,7 +173,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .ammo i.e{background:var(--line)}
 .mag{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:16.5px;color:var(--muted)}
 .mag .ammo{margin-top:0;flex:1;min-width:0}
-.mlbl{min-width:96px;flex:none;font-family:var(--display);font-size:16px;letter-spacing:.1em;text-transform:uppercase}
+.item.chico{padding:6px 0;align-items:center}.item.chico .ic{height:28px}
+.mag.rep{margin-top:4px}
+.mlbl{min-width:96px;white-space:nowrap;flex:none;font-family:var(--display);font-size:16px;letter-spacing:.1em;text-transform:uppercase}
 .chamber{width:9px;height:14px;border:1px solid var(--gold);border-radius:2px;flex:none}
 .chamber.on{background:var(--gold)}
 .money{display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:18px}
@@ -1607,21 +1609,31 @@ function renderFicha(){
 
   if(modoMesa()){ $("#s-ficha").insertAdjacentHTML("afterbegin", barraMesaFicha()); enlazarBarraMesa(); }}
 const ammo = (n,m) => '<div class="ammo">'+Array.from({length:m},(_,i)=>`<i class="${i<n?"":"e"}"></i>`).join("")+"</div>";
+// Los repuestos (cargadores o cargas) se muestran adentro del arma, con el mismo formato que el cargador; los que están guardados en un refugio se resumen en una línea.
+function repuestosHTML(o){
+  const todos = cargadoresDe(o.id); if(!todos.length) return "";
+  const cap = o.mecanismo === "revolver" ? o.capacidad_tambor : o.capacidad_cargador;
+  const aca = todos.map((c, i) => ({c, i})).filter(({c}) => (c.lugar || ENCIMA) === ENCIMA), lejos = todos.filter(c => (c.lugar || ENCIMA) !== ENCIMA);
+  return aca.map(({c, i}) => `<div class="mag rep"><span class="mlbl">Repuesto ${i + 1}</span>${ammo(c.balas || 0, cap)}<span class="num">${c.balas || 0}/${cap}</span></div>`).join("")
+    + (lejos.length ? `<p class="pen" style="margin:4px 0 0">${lejos.length} repuesto${lejos.length > 1 ? "s" : ""} guardado${lejos.length > 1 ? "s" : ""} en ${esc([...new Set(lejos.map(c => nombreLugar(c.lugar)))].join(", "))}</p>` : "");
+}
 function armaHTML(o){
   normArma(o);
-  if(o.mecanismo === "revolver") return `<div class="mag"><span class="mlbl">Tambor</span>${ammo(o.tambor,o.capacidad_tambor)}<span class="num">${o.tambor}/${o.capacidad_tambor}</span></div>`;
+  if(o.mecanismo === "revolver") return `<div class="mag"><span class="mlbl">Tambor</span>${ammo(o.tambor,o.capacidad_tambor)}<span class="num">${o.tambor}/${o.capacidad_tambor}</span></div>${repuestosHTML(o)}`;
   const aviso = !o.recamara && o.cargador > 0 ? (manual(o) ? "vacía · se acciona al disparar" : "vacía · hay que montar") : (o.recamara ? "cargada" : "vacía");
   return `<div class="mag"><span class="mlbl">Recámara</span><i class="chamber ${o.recamara?"on":""}"></i><span>${aviso}</span></div>
     <div class="mag"><span class="mlbl">Cargador</span>${ammo(o.cargador,o.capacidad_cargador)}<span class="num">${o.cargador}/${o.capacidad_cargador}</span></div>
+    ${repuestosHTML(o)}
     <p>${o.recamara + o.cargador} balas en total en el arma</p>`;
 }
 function renderInv(){
   const ic = o => ({arma_fuego:"ARMA",arma_cc:"FILO",cargador:"CRG",ropa:"ROPA"}[o.tipo] || "OBJ");
   const mesa = modoMesa();
-  const it = o => `<div class="item"><div class="ic">${ic(o)}</div><div style="min-width:0;flex:1"><b>${mesa ? `<button type="button" class="info" data-obj="${esc(o.id)}">${esc(o.nombre)}</button>` : esc(o.nombre)}</b>${o.pertenece_a?'<span class="tag">del templo</span>':""}
+  const it = o => o.tipo === "cargador" ? `<div class="item chico"><div class="ic">CRG</div><div style="min-width:0;flex:1">${mesa ? `<button type="button" class="info" data-obj="${esc(o.id)}">${esc(o.nombre)}</button>` : `<span>${esc(o.nombre)}</span>`} <span class="pen">· ${o.balas} bala${o.balas === 1 ? "" : "s"}${o.balas === 0 ? " · vacío" : ""}</span></div></div>`
+    : `<div class="item"><div class="ic">${ic(o)}</div><div style="min-width:0;flex:1"><b>${mesa ? `<button type="button" class="info" data-obj="${esc(o.id)}">${esc(o.nombre)}</button>` : esc(o.nombre)}</b>${o.pertenece_a?'<span class="tag">del templo</span>':""}
     <p>${o.tipo==="arma_fuego"?`${MECANISMO[normArma(o).mecanismo]} · daño ${o.dano} · alcance ${o.alcance} · cadencia ${o.cadencia}`:o.tipo==="arma_cc"?`Fuerza +${o.dano_fuerza}, ${TIPO_DANO[o.tipo_dano||"L"]}`:o.tipo==="cargador"?`${o.balas} balas${o.balas>=15?" · lleno":o.balas===0?" · vacío":""}`:""}${infoEsp(o)?" · ✦ "+esc(infoEsp(o)):""}${o.nota?(o.tipo?" · ":"")+esc(o.nota):""}${o.estado?" · "+esc(o.estado):""}</p>
     ${mesa && togglesEsp(o) ? `<div class="chips wrap" style="margin-top:6px">${togglesEsp(o)}</div>` : ""}${o.tipo==="arma_fuego"?armaHTML(o):""}</div></div>`;
-  const lleva = encima(), armas = lleva.filter(o => ["arma_fuego","arma_cc","cargador"].includes(o.tipo)), resto = lleva.filter(o => !armas.includes(o));
+  const lleva = encima(), armas = lleva.filter(o => ["arma_fuego","arma_cc"].includes(o.tipo)), resto = lleva.filter(o => !armas.includes(o) && o.tipo !== "cargador");
   const refs = refugios().map(r => { const hay = INV.items.filter(o => o.lugar === r.id);
     return `<section class="blk refugio"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">${esc(r.nombre)}</h2>${mesa ? `<button class="btn ghost" type="button" data-ref="${esc(r.id)}" style="padding:4px 10px">Editar</button>` : ""}</div>${r.descripcion?`<p class="pen" style="margin:6px 0 0">${esc(r.descripcion)}</p>`:""}${r.notas?`<p class="pen" style="margin:6px 0 0;white-space:pre-wrap">${esc(r.notas)}</p>`:""}<div style="margin-top:8px">${hay.map(it).join("") || '<p class="pen">Nada guardado.</p>'}</div></section>`; }).join("");
   $("#s-inv").innerHTML = (mesa ? `<section class="blk"><div class="barra3 b4"><button class="btn ghost" type="button" data-nuevo="fuego">+ Arma de fuego</button><button class="btn ghost" type="button" data-nuevo="cc">+ Cuerpo a cuerpo</button><button class="btn ghost" type="button" data-nuevo="objeto">+ Objeto</button></div><p class="pen" style="margin:8px 0 0">Tocá el nombre de un objeto para editarlo.</p></section>` : "") +
@@ -4780,7 +4792,7 @@ function armasJuegoHTML(){
       const pool = Math.max(0, rasgo("destreza") + bonoSi("destreza", s.sumaCel).dados + rasgo("armas_de_fuego") + pen + (s.modo === "rafaga" ? 2 : s.modo === "auto" ? 10 : 0));
       return `<div class="arma">
         <div class="a-top"><div class="a-txt"><b>${esc(o.nombre)}</b>
-          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · ${reps.length} repuesto${reps.length>1?"s":""}` : ""}</span></span>${resumenEsp(o) ? `<span class="a-sub"><span>✦ ${esc(resumenEsp(o))}</span></span>` : ""}</div>
+          <span class="a-sub">${ammo(balas, cap)}<span>${balas} bala${balas===1?"":"s"}${reps.length ? ` · repuesto${reps.length>1?"s":""} ${reps.map(c => c.balas).join(" · ")}` : ""}</span></span>${resumenEsp(o) ? `<span class="a-sub"><span>✦ ${esc(resumenEsp(o))}</span></span>` : ""}</div>
           <span class="a-info">${pool} dados<br>daño ${(Number(o.dano)||0) + bonoEsp(o)}</span></div>
         ${reqAviso(o)}${togglesEsp(o) ? `<div class="a-ctl">${togglesEsp(o)}</div>` : ""}
         <div class="a-ctl"><select class="mini" aria-label="Dificultad del disparo" data-ja="${o.id}:dif">${[["4","Dif. 4 · quemarropa"],["5","Dif. 5"],["6","Dif. 6 · corto"],["7","Dif. 7"],["8","Dif. 8 · largo"],["9","Dif. 9"],["10","Dif. 10"]].map(([v,t]) => `<option value="${v}" ${s.dif===v?"selected":""}>${t}</option>`).join("")}</select>

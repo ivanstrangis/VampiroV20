@@ -1110,6 +1110,22 @@ await prueba("Rituales en el Inventario: del manual con requisitos, propios de l
   await page.evaluate(() => { W = nuevoW(); RIT_USR = []; mostrarPestana("chat"); });
 });
 
+await prueba("munición: los repuestos van dentro del arma (Repuesto 1, 2…) y no como filas aparte", async () => {
+  await page.evaluate(() => {
+    INV.items = INV.items.filter(o => !["arma_fuego","cargador"].includes(o.tipo));
+    INV.items.push({id:"glock_t", nombre:"Glock 17", tipo:"arma_fuego", dano:4, alcance:20, cadencia:4, mecanismo:"semiautomatica", capacidad_cargador:16, cargador:10, recamara:1, lugar:"encima"},
+      {id:"glock_t_r1", nombre:"Cargador de repuesto 1", tipo:"cargador", para:"glock_t", balas:16, lugar:"encima"},
+      {id:"glock_t_r2", nombre:"Cargador de repuesto 2", tipo:"cargador", para:"glock_t", balas:7, lugar:"encima"});
+    renderInv(); });
+  await page.click('#tabs [data-t="inv"]');
+  const t = await page.textContent("#s-inv .item:has-text('Glock 17')");
+  assert.match(t, /Repuesto 1/); assert.match(t, /16\/16/); assert.match(t, /Repuesto 2/); assert.match(t, /7\/16/);
+  assert.equal(await page.locator("#s-inv .item.chico").count(), 0, "los cargadores equipados no son filas aparte");
+  await foto("municion-repuestos");
+  await page.evaluate(() => { INV.items.find(o => o.id === "glock_t_r2").lugar = INV.refugios?.[0]?.id || "encima"; renderInv(); });
+  await page.evaluate(() => { INV.items = INV.items.filter(o => !["glock_t","glock_t_r1","glock_t_r2"].includes(o.id)); });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
