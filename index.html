@@ -1806,8 +1806,9 @@ function deslizarParaCerrar(hoja, fondo){
 }
 const cerrarSheet = () => { const f = alCerrarSheet; alCerrarSheet = null; $("#sheet-root").innerHTML = ""; if(f) f(); };
 // Vela de la apariencia: encendida (llama rojiza) en el modo oscuro, apagada en el claro.
+const velaEtiqueta = oscuro => `Apariencia: ${oscuro ? "oscura, con la vela encendida. Tocá para pasar a clara" : "clara, con la vela apagada. Tocá para pasar a oscura"}`;
 const velaHTML = () => { const oscuro = TEMA !== "claro";
-  return `<button type="button" class="vela" id="btn-tema" role="switch" aria-checked="${oscuro}" aria-label="Apariencia: ${oscuro ? "oscura, con la vela encendida. Tocá para pasar a clara" : "clara, con la vela apagada. Tocá para pasar a oscura"}" title="${oscuro ? "Modo oscuro" : "Modo claro"}">
+  return `<button type="button" class="vela" id="btn-tema" role="switch" aria-checked="${oscuro}" aria-label="${velaEtiqueta(oscuro)}" title="${oscuro ? "Modo oscuro" : "Modo claro"}">
     <svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="vl-g" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#a8101c"/><stop offset=".55" stop-color="#e5432f"/><stop offset="1" stop-color="#ffb085"/></linearGradient></defs>
       <path class="llama" d="M16 3.2c3 3.4 4.1 5.8 1.6 9.2h-3.2C11.9 9 13 6.6 16 3.2Z" fill="url(#vl-g)"/>
       <path d="M16 12.6v2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>
@@ -1835,7 +1836,8 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   <div class="row"><button class="btn ghost" type="button" id="mi-x">Cerrar</button></div>`, async () => {
     $("#mi-x").onclick = cerrarSheet;
     if($("#mi-motor")) $("#mi-motor").onclick = () => abrirMotor();
-    const vela = $("#btn-tema"); if(vela) vela.onclick = () => { aplicarTema(TEMA === "claro" ? "oscuro" : "claro"); vela.outerHTML = velaHTML(); $("#btn-tema").onclick = vela.onclick; $("#btn-tema").focus(); };
+    const vela = $("#btn-tema"); if(vela) vela.onclick = () => { aplicarTema(TEMA === "claro" ? "oscuro" : "claro"); const o = TEMA !== "claro";
+      vela.setAttribute("aria-checked", String(o)); vela.setAttribute("aria-label", velaEtiqueta(o)); vela.title = o ? "Modo oscuro" : "Modo claro"; };
     if($("#mi-partida")) $("#mi-partida").onclick = () => { cerrarSheet(); abrirPartida(); };
     if(ia){ $("#mi-esc").onclick = () => { cerrarSheet(); cerrarEscena(); }; $("#mi-noche").onclick = () => { cerrarSheet(); confirmarNoche(); }; }
     $("#mi-crear").onclick = () => { cerrarSheet(); abrirCreacion(); };

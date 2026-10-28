@@ -1206,6 +1206,12 @@ await prueba("apariencia: la vela del menú alterna oscuro y claro", async () =>
   await foto("vela-claro");
   await page.click("#btn-tema");
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), undefined);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator("#btn-tema").getAttribute("aria-checked"), "true", "de nuevo oscuro: vela encendida");
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".vela .llama")).opacity), "1", "la llama vuelve");
+  await page.click("#btn-tema"); await page.click("#btn-tema"); await page.click("#btn-tema"); await page.click("#btn-tema");   // muchas veces seguidas
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".vela .llama")).opacity), "1");
   await page.evaluate(() => cerrarSheet());
 });
 
