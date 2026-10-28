@@ -221,15 +221,23 @@ textarea.notes{width:100%;min-height:120px;background:var(--panel);border:1px so
 .dotpick button{width:22px;height:22px;border-radius:50%;border:1px solid var(--gold);background:transparent;padding:0}
 .dotpick button.on{background:var(--gold)}
 .dotpick button:disabled{cursor:default;opacity:1}
-.dots{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px}
-.dots button{width:26px;height:26px;border-radius:50%;border:1px solid var(--borde);background:transparent;padding:0}
-.dots button.on{background:var(--gold);border-color:var(--gold)}
-.dots button.fr{background:var(--extra);border-color:var(--extra)}
-.dots button:disabled{cursor:default;opacity:1}
+.dots[data-dp]{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px}
+.dots[data-dp] button{width:26px;height:26px;border-radius:50%;border:1px solid var(--borde);background:transparent;padding:0}
+.dots[data-dp] button.on{background:var(--gold);border-color:var(--gold)}
+.dots[data-dp] button.fr{background:var(--extra);border-color:var(--extra)}
+.dots[data-dp] button:disabled{cursor:default;opacity:1}
 .arow2 .tot small.gr{color:var(--extra);font-size:16px;font-weight:600}
 .stat-v.sobra{color:var(--bad)}.stat-v.listo{color:var(--ok)}
 .err{color:var(--bad);font-size:16.5px;min-height:1.3em;margin:4px 0 0}
 .wz-nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px}
+.wz-ref{position:sticky;top:-8px;z-index:5;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:-8px -16px 10px;padding:8px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+.wz-ref::-webkit-scrollbar{display:none}
+.ref-chip{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:999px;padding:6px 12px;font:inherit;font-size:16px;white-space:nowrap;cursor:pointer}
+.ref-chip.clan{border-color:var(--gold);background:var(--gold-soft)}
+.ref-chip small{font-size:16px;color:var(--muted);font-family:var(--mono)}
+.ref-chip.tiene{border-color:var(--gold)}
+.cat .pod{padding:4px 0;line-height:1.4}
+.cat .pod+.pdesc{margin-top:2px}
 .later{list-style:none;padding:0;margin:0}
 .later li{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:16px}
 .later li span{color:var(--muted);font-family:var(--mono);font-size:16px;text-align:right}
@@ -2212,6 +2220,7 @@ function renderWz(){
   const wz = $("#s-crear"), s = W.step, opt = (l,sel) => l.map(a => `<option ${a===sel?"selected":""}>${a}</option>`).join("");
   const bar = '<div class="steps">'+PASOS.map((_,i)=>`<i class="${i<=s?"on":""}"></i>`).join("")+"</div>";
   const err = validarPaso(s);
+  const ref = refClanDisc();
   const nav = `<p class="err" role="status">${s<9?esc(err):""}</p><div class="wz-nav"><button class="btn ghost" type="button" id="wz-back">${s===0?(F?"Volver al juego":"Cancelar"):"Atrás"}</button>${s<9?`<button class="btn" type="button" id="wz-next" ${err?"disabled":""}>Siguiente</button>`:""}</div>`;
   const head = (t, hint) => bar + `<div class="sec-lbl">Paso ${s+1} de ${PASOS.length}</div><h2>${t}</h2><p class="hint">${hint}</p>`;
   let html = "";
@@ -2244,7 +2253,7 @@ function renderWz(){
     html = head("Disciplinas", "3 puntos entre las Disciplinas de tu clan.") +
       `<div class="cat"><div class="cat-h"><b>${esc(clanDe(W.clan)[0])}</b>${presupuesto(sumaVals(W.dis, disClan()), 3)}</div>` +
       disClan().map(d => `<div class="arow">${infoBtn(d, W.dis[d])}${pick("dis:"+d, W.dis[d]||0, 0, 3)}</div>`).join("") + "</div>" +
-      `<div class="hint">${poderesDe(W.dis).map(p => poderHTML(p)).join("")}</div>`;
+      (poderesDe(W.dis).length ? `<div class="cat"><div class="cat-h"><b>Poderes que desbloqueás</b></div>${poderesDe(W.dis).map(p => poderHTML(p)).join("")}</div>` : "");
   }
   if(s === 5){
     html = head("Trasfondos", "5 puntos. Generación baja tu generación (5 puntos = 8ª).") +
@@ -2305,7 +2314,24 @@ function renderWz(){
     wz.innerHTML = html; enlazarWz(wz); wz.scrollTop = 0;
     return;
   }
-  wz.innerHTML = html + nav; enlazarWz(wz);
+  const rx = wz.querySelector(".wz-ref")?.scrollLeft || 0;
+  wz.innerHTML = ref + html + nav; enlazarWz(wz);
+  const rn = wz.querySelector(".wz-ref"); if(rn) rn.scrollLeft = rx;
+}
+// Clan y Disciplinas siempre a mano mientras se arma la hoja: tocar una abre el detalle con las tiradas.
+function refClanDisc(){
+  const c = clanDe(W.clan);
+  if(!c || W.step < 2 || W.step > 8) return "";
+  return `<div class="wz-ref" role="toolbar" aria-label="Tu clan y sus Disciplinas"><button type="button" class="ref-chip clan" data-refclan>${esc(c[0])}</button>` +
+    c[2].map(d => { const n = totalRasgo("disciplina", d); return `<button type="button" class="ref-chip ${n ? "tiene" : ""}" data-info="${d}" data-v="${n}" aria-label="${esc(lab(d))}, nivel ${n}">${esc(lab(d))} <small>${n}</small></button>`; }).join("") + "</div>";
+}
+function mostrarClan(){
+  const c = clanDe(W.clan); if(!c) return;
+  abrirSheet(`<div class="sec-lbl">Tu clan</div><h2>${esc(c[0])}</h2><p class="info-desc">${esc(CLAN_DESC[c[1]] || "")}</p>
+    <div class="kv"><span>Debilidad</span><span>${esc(c[3])}</span></div>
+    <div class="kv"><span>Disciplinas</span><span>${c[2].map(d => infoBtn(d, totalRasgo("disciplina", d))).join(", ")}</span></div>
+    ${W.detalle ? `<div class="kv"><span>${esc(String(c[4]||"Detalle").replace(/^¿|\?$/g,""))}</span><span>${esc(W.detalle)}</span></div>` : ""}
+    <div class="row"><button class="btn ghost" type="button" id="clan-x">Cerrar</button></div>`, () => { $("#clan-x").onclick = cerrarSheet; });
 }
 function enlazarWz(wz){
   const re = () => { const y = wz.scrollTop, a = [...wz.querySelectorAll("details")].map(x => x.open); renderWz();
@@ -2340,6 +2366,7 @@ function enlazarWz(wz){
     tir.disabled = true; const caja = $("#w-dado"), t0 = Date.now();
     while(Date.now() - t0 < (reduce?80:700)){ caja.innerHTML = `<div class="d10 spin">${d10()}</div>`; await wait(70); }
     W.sangre = d10(); re(); };
+  wz.querySelectorAll("[data-refclan]").forEach(b => b.onclick = mostrarClan);
   const b = $("#wz-back"); if(b) b.onclick = () => { if(W.step === 0){ if(F) mostrarPestana("chat"); else pantallaVacia(); } else { W.step--; renderWz(); $("#s-crear").scrollTop = 0; } };
   const n = $("#wz-next"); if(n) n.onclick = () => { if(validarPaso(W.step)) return; W.step++; renderWz(); $("#s-crear").scrollTop = 0; };
   const c = $("#wz-crear"); if(c) c.onclick = crearPersonaje;
@@ -2690,7 +2717,7 @@ function mostrarInfo(k, v){
   const niv = nivelesInfo(k);
   abrirSheet(`<div class="sec-lbl">${v ? "Tiene "+v : "Sin puntos"}</div><h2>${esc(lab(k))}</h2><p class="info-desc">${esc(d[0])}</p>
     ${niv ? `<ol class="niveles">${niv.map((t,i) => { const nom = String(t).split(":")[0].replace(/\.$/, "").trim(), dsc = DESC_PODER[nom];
-      const k = String(t).indexOf(":"), resto = k > 0 ? String(t).slice(k) : "";
+      const k = String(t).indexOf(":"), tir = TIRADA_PODER[nom], resto = tir ? " · " + tir : (k > 0 ? String(t).slice(k) : "");
       const fila = `<span class="dots">${"●".repeat(i+1)}<i>${"●".repeat(4-i)}</i></span><span>${dsc ? `<u class="pn">${esc(nom)}</u>${esc(resto)}` : esc(t)}</span>`;
       return `<li class="${i+1===v?"actual":""}">${dsc ? `<details class="pdet"><summary>${fila}</summary><p>${esc(dsc)}</p></details>` : fila}</li>`; }).join("")}</ol>
       ${niv.some(t => DESC_PODER[String(t).split(":")[0].replace(/\.$/, "").trim()]) ? '<p class="pen">Tocá un poder para ver qué hace.</p>' : ""}` : ""}

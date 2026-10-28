@@ -942,6 +942,29 @@ await prueba("paquete de crónica: se previsualiza, trae personajes y armas, y l
   await page.waitForFunction(() => F && F.nombre === "Test Vampiro", null, { timeout: 15000 });
 });
 
+await prueba("creador: clan y Disciplinas quedan arriba en los pasos y su detalle se lee bien", async () => {
+  await page.evaluate(() => { abrirCreacion(); W.nombre = "X Y"; W.concepto = "c"; W.clan = "ventrue"; W.dis = {dominacion: 2}; W.step = 3; renderWz(); });
+  assert.equal(await page.locator(".wz-ref .ref-chip").count(), 4, "clan + 3 Disciplinas");
+  await page.evaluate(() => { document.querySelector("#s-crear").scrollTop = 500; });
+  const top = await page.evaluate(() => document.querySelector(".wz-ref").getBoundingClientRect().top - document.querySelector("#s-crear").getBoundingClientRect().top);
+  assert.ok(top < 12, "la barra queda fija arriba al scrollear: " + top);
+  await page.click('.wz-ref [data-info="dominacion"]');
+  await page.waitForSelector(".niveles li");
+  const ancho = await page.evaluate(() => document.querySelector(".niveles li > span:last-child, .niveles li summary > span:last-child").getBoundingClientRect().width);
+  assert.ok(ancho > 200, "el texto del poder no se aprieta a la izquierda: " + ancho);
+  assert.match(await page.textContent(".niveles li"), /Manipulación \+ Intimidación/);
+  await page.click(".niveles .pdet summary");
+  const ancho2 = await page.evaluate(() => document.querySelector(".niveles .pdet p").getBoundingClientRect().width);
+  assert.ok(ancho2 > 200, "la descripción abierta tiene ancho: " + ancho2);
+  await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
+  await page.click(".wz-ref [data-refclan]");
+  assert.match(await page.textContent("#sheet-root"), /Debilidad/);
+  await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
+  await page.evaluate(() => { W.step = 1; renderWz(); });
+  assert.equal(await page.locator(".wz-ref").count(), 0, "en el paso del clan no hace falta");
+  await page.evaluate(() => { W = nuevoW(); mostrarPestana("chat"); });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
