@@ -1134,6 +1134,24 @@ await prueba("munición: los repuestos van dentro del arma (Repuesto 1, 2…) y 
   await page.evaluate(() => { INV.items = INV.items.filter(o => !["glock_t","glock_t_r1"].includes(o.id) && o.para !== "glock_t"); INV.refugios = INV.refugios.filter(r => r.id !== "ref_t"); renderInv(); });
 });
 
+await prueba("editar personaje: Guardar y Cancelar flotan abajo, a la altura del dado y sin taparlo", async () => {
+  await page.click('#tabs [data-t="ficha"]');
+  await page.evaluate(() => { EDIT = clonar(F); renderFicha(); document.querySelector("#s-ficha").scrollTop = 0; });
+  await page.waitForSelector("#ed-guardar");
+  const r = await page.evaluate(() => { const b = document.querySelector(".barra-ed").getBoundingClientRect(), f = document.querySelector("#fab-dado").getBoundingClientRect(), v = innerHeight;
+    return {bTop:b.top, bBot:b.bottom, bRight:b.right, fTop:f.top, fBot:f.bottom, fLeft:f.left, v}; });
+  assert.ok(r.bBot <= r.v, "la barra está a la vista aunque no se haya scrolleado: " + JSON.stringify(r));
+  assert.ok(Math.abs((r.bTop + r.bBot) / 2 - (r.fTop + r.fBot) / 2) < 16, "a la altura del dado: " + JSON.stringify(r));
+  assert.ok(r.bRight <= r.fLeft, "no tapa el dado: " + JSON.stringify(r));
+  await foto("edicion-flotante");
+  await page.evaluate(() => { EDIT.atributos.fuerza = (EDIT.atributos.fuerza || 1) + 1; });
+  await page.click("#ed-guardar");
+  assert.match(await page.textContent("#ed-err"), /motivo/);
+  await page.click("#ed-cancelar");
+  assert.equal(await page.locator(".barra-ed").count(), 0);
+  await page.click('#tabs [data-t="inv"]');
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

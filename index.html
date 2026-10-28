@@ -295,6 +295,10 @@ details.esp-arma{margin-top:16px}
 .barra3 .btn{padding:8px 4px;font-size:16px;white-space:nowrap}
 .arma{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
 .arma:first-of-type{border-top:0;margin-top:0;padding-top:0}
+/* Guardar y Cancelar flotan abajo, a la altura del dado, sin tapar el botón del dado (queda a la derecha). */
+.barra-ed{position:absolute;left:max(16px, env(safe-area-inset-left, 0px));right:calc(max(16px, env(safe-area-inset-right, 0px)) + 64px);bottom:94px;z-index:15;display:flex;gap:8px}
+.barra-ed .btn{flex:1;min-width:0;height:52px;padding:0 10px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.barra-ed .btn.ghost{background:var(--panel)}
 .rep-fila{display:grid;grid-template-columns:auto 62px minmax(0,1fr) 40px;gap:6px;align-items:center;margin-bottom:8px}
 .rep-t{white-space:nowrap}.rep-fila .rep-n{width:100%;min-width:0}
 .rep-l{min-width:0;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:14px;color:var(--fg);font:inherit;font-size:16px;padding:6px 8px;text-overflow:ellipsis}
@@ -1575,7 +1579,7 @@ function enlazarTrasfondos(){
 }
 function renderFicha(){
   if(EDIT && modoMesa()) return renderFichaEdit();
-  EDIT = null;
+  EDIT = null; $("#app").querySelectorAll(".barra-ed").forEach(x => x.remove());
   const [, reserva, porTurno] = limites();
   const pt = (n,max,cls="") => Array.from({length:max},(_,i)=>`<i class="pip ${cls} ${i<n?"on":""}"></i>`).join("");
   const habCols = Object.entries(HAB).map(([g,lista]) => { const tiene = lista.filter(h => F.habilidades[h]);
@@ -1677,6 +1681,7 @@ $("#tabs").addEventListener("click", e => {
 function mostrarPestana(t){
   document.querySelectorAll("#tabs button").forEach(x => x.setAttribute("aria-selected", x.dataset.t === t));
   const p = (t === "chat" && modoMesa()) ? "juego" : t;
+  if(p !== "ficha") $("#app").querySelectorAll(".barra-ed").forEach(x => x.remove());   // la edición sigue en pie: al volver a Ficha reaparece
   ["chat","juego","ficha","inv","notas","crear"].forEach(k => $("#s-"+k).hidden = (k !== p));
   if(F) $("#tabs").hidden = (p === "crear");   // creando un personaje no hay pestañas: la salida es «Atrás»
   $("#composer").hidden = (p !== "chat");
@@ -4316,7 +4321,7 @@ function renderFichaEdit(){
   const todas = ["animalismo","auspex","celeridad","dementacion","dominacion","extincion","fortaleza","necromancia","obtenebracion","ofuscacion","potencia","presencia","protean","quimerismo","serpentis","taumaturgia","vicisitud"];
   const faltan = todas.filter(d => !(d in (E.disciplinas||{})));
   $("#s-ficha").innerHTML = `
-  <section class="blk"><div class="clan-detail" style="margin:0">Editando la ficha. Los cambios se guardan juntos, con el motivo, cuando tocás <b>Guardar cambios</b>.</div></section>
+  <section class="blk"><div class="clan-detail" style="margin:0">Editando la ficha. Los cambios se guardan juntos, con el motivo, cuando tocás <b>Guardar</b>.</div></section>
   ${Object.entries(ATR).map(([g,l]) => `<section class="blk cat"><div class="cat-h"><b>Atributos ${lab(g).toLowerCase()}</b></div>${l.map(a => filaEdit("atributos", a, E.atributos[a]||0, (E.clan==="nosferatu"&&a==="apariencia")?0:mx, (E.clan==="nosferatu"&&a==="apariencia")?0:1)).join("")}</section>`).join("")}
   ${Object.entries(HAB).map(([g,l]) => `<details class="cat"><summary>Habilidades · ${lab(g)}</summary>${l.map(h => filaEdit("habilidades", h, E.habilidades[h]||0, mx)).join("")}</details>`).join("")}
   <section class="blk cat"><div class="cat-h"><b>Disciplinas</b></div>${Object.keys(E.disciplinas||{}).map(d => filaEdit("disciplinas", d, E.disciplinas[d], mx)).join("")}
@@ -4331,8 +4336,9 @@ function renderFichaEdit(){
     <div class="field"><input id="ed-me" placeholder="Qué hace en el juego" aria-label="Efecto"></div>
     <div class="row" style="justify-content:space-between"><select id="ed-mt" class="mydsel" aria-label="Tipo"><option>Mérito</option><option>Defecto</option></select><button class="btn ghost" type="button" id="ed-madd">Agregar</button></div></section>
   <section class="blk"><div class="field"><label for="ed-motivo">Motivo del cambio (queda en el registro)</label><input id="ed-motivo" value="${esc(E._motivo||"")}" placeholder="Ej.: el Director lo decidió por la historia"></div>
-    <p class="err" id="ed-err"></p>
-    <div class="row"><button class="btn ghost" type="button" id="ed-cancelar">Cancelar</button><button class="btn" type="button" id="ed-guardar">Guardar cambios</button></div></section>`;
+    <p class="err" id="ed-err"></p></section>`;
+  $("#app").querySelectorAll(".barra-ed").forEach(x => x.remove());
+  $("#app").insertAdjacentHTML("beforeend", `<div class="barra-ed" role="group" aria-label="Guardar o cancelar la edición"><button class="btn ghost" type="button" id="ed-cancelar">Cancelar</button><button class="btn" type="button" id="ed-guardar">Guardar</button></div>`); posFab();
   const s = $("#s-ficha"), re = () => { const y = s.scrollTop, ab = [...s.querySelectorAll("details")].map(x => x.open); renderFichaEdit(); s.querySelectorAll("details").forEach((x,i) => x.open = ab[i]); s.scrollTop = y; };
   s.querySelectorAll("[data-ed]").forEach(b => b.onclick = () => {
     const [g,k] = b.dataset.ed.split(":"), d = +b.dataset.d;
@@ -4367,7 +4373,7 @@ function diferencias(a, b, pref=""){
 function guardarEdicion(){
   const cambios = diferencias(F, EDIT), motivo = (EDIT._motivo||"").trim();
   if(!cambios.length){ EDIT = null; renderFicha(); return; }
-  if(!motivo){ $("#ed-err").textContent = "Escribí el motivo del cambio para que quede registrado."; $("#ed-motivo").focus(); return; }
+  if(!motivo){ $("#ed-err").textContent = "Escribí el motivo del cambio para que quede registrado."; $("#ed-motivo").focus(); avisoJuego("Falta el motivo del cambio."); return; }
   const nuevo = JSON.parse(JSON.stringify(EDIT)); delete nuevo._motivo;
   for(const d of Object.keys(nuevo.disciplinas||{})) if(!nuevo.disciplinas[d]) delete nuevo.disciplinas[d];
   for(const h of Object.keys(nuevo.habilidades||{})) if(!nuevo.habilidades[h]) delete nuevo.habilidades[h];
@@ -4489,7 +4495,7 @@ function posFab(){
   const app = $("#app"), fab = $("#fab-dado"); if(!app || !fab) return;
   const comp = $("#composer"), tope = (!comp.hidden ? comp : $("#tabs")).getBoundingClientRect().top;
   const b = Math.max(12, app.getBoundingClientRect().bottom - tope + 12) + "px";
-  fab.style.bottom = b; const u = $("#undo"); if(u) u.style.bottom = b;
+  fab.style.bottom = b; const u = $("#undo"); if(u) u.style.bottom = b; const be = $(".barra-ed"); if(be) be.style.bottom = b;
 }
 function caraRapida(d, i){
   const cls = d.desc ? "gris" : d.v === 1 ? "uno" : (d.v === 10 && !d.usado) ? "cero" : "";
