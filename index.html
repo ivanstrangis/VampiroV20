@@ -314,6 +314,12 @@ details.esp-arma{margin-top:16px}
 .pnom{background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .pod{margin:2px 0 0}
 .arqbox .pdesc{margin-top:0}
+.sda{margin:8px 0 0;font-size:16px}
+.pdet.sendas summary{display:block;font-weight:600;padding:6px 0}
+.pdet.sendas summary::after{content:"+";float:right;color:var(--muted)}
+.pdet.sendas[open] summary::after{content:"−"}
+.pdet.sendas p{margin:4px 0 2px}
+.pdet.sendas p.pdesc{margin:2px 0 8px}
 .pdesc{margin:2px 0 8px;padding:8px 10px;border-left:2px solid var(--blood);background:var(--panel-2);border-radius:0 8px 8px 0;color:var(--fg);font-size:16px;line-height:1.45}
 .pdet p{margin:6px 0 4px 72px;color:var(--fg);font-size:16px;line-height:1.45}
 .disf .fila{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -919,9 +925,15 @@ function curar(niveles){
   evento("curacion", {niveles, salud:[...F.salud]});
   return {curados:niveles, nivel:nivelSalud()};
 }
-function usarPoder(disciplina, nivel, poder, sangre=0, fv=0){
+function usarPoder(disciplina, nivel, poder, sangre=0, fv=0, senda=""){
   activo();
-  const d = norm(disciplina), tiene = (F.disciplinas||{})[d] || 0;
+  const d = norm(disciplina), sd = norm(senda);
+  if(d === "taumaturgia" && sd && sd !== "sangre"){
+    if(!SENDAS_TAUM[sd]) throw new ReglaError(`No existe la Senda «${senda}» de Taumaturgia.`);
+    const nv = F.sendas?.taumaturgia?.[sd] || 0;
+    if(nv < nivel) throw new ReglaError(`${F.nombre} tiene ${SENDAS_TAUM[sd].nombre} ${nv}; «${poder}» requiere nivel ${nivel}.`);
+  }
+  const tiene = d === "taumaturgia" && sd && sd !== "sangre" ? nivel : Math.min((F.disciplinas||{})[d] || 0, d === "taumaturgia" ? 5 : 99);
   if(tiene < nivel) throw new ReglaError(`${F.nombre} tiene ${lab(d)} ${tiene}; «${poder}» requiere nivel ${nivel}.`);
   if(fv && F.fv < fv) throw new ReglaError(`«${poder}» cuesta ${fv} de Fuerza de Voluntad y ${F.nombre} tiene ${F.fv}.`);
   if(sangre && sangre > F.sangre) throw new ReglaError(`«${poder}» cuesta ${sangre} de Sangre y ${F.nombre} tiene ${F.sangre}.`);
@@ -1229,7 +1241,7 @@ function contexto(){
     nombre:F.nombre, clan:F.clan, generacion:F.generacion, concepto:F.concepto, naturaleza:F.naturaleza, conducta:F.conducta,
     descripcion:F.descripcion, atributos:F.atributos, habilidades:F.habilidades, disciplinas:F.disciplinas, poderes:F.poderes,
     trasfondos:F.trasfondos, trasfondos_detalle:F.trasfondos_detalle||{}, especialidades:F.especialidades||{}, trasfondos_notas:Object.fromEntries(Object.entries(F.trasfondos_notas||{}).map(([t,l]) => [t, l.map(n => n.texto)])), virtudes:F.virtudes, humanidad:F.humanidad,
-    fuerza_de_voluntad:`${F.fv}/${F.fv_max}`, sangre:`${F.sangre}/${reserva} (gasto máx. ${porTurno} por turno)`,
+    fuerza_de_voluntad:`${F.fv}/${F.fv_max}`, ...(F.sendas ? {sendas:F.sendas} : {}), sangre:`${F.sangre}/${reserva} (gasto máx. ${porTurno} por turno)`,
     hambriento:hambriento(), salud:nivelSalud(), penalizacion_heridas:penalizacion(), estado:F.estado||"activo",
     meritos:(F.meritos||[]).map(d => d.nombre+": "+d.efecto), defectos:(F.defectos||[]).map(d => d.nombre+": "+d.efecto), criterios_de_mesa:F.criterios_texto||[]
   };
@@ -1316,8 +1328,8 @@ function herramientas(){
     {type:"object", properties:{nombre:{type:"string"}, como:{type:"string"}}, required:["nombre"]},
     i => { const o = exigirObjeto(String(i.nombre)); evento("uso_objeto", {objeto:o.id, como:i.como||""}); return o; });
   tool("usar_poder", "Usa un poder de Disciplina: verifica el nivel y cobra Sangre y Fuerza de Voluntad. Devuelve la Sangre y FV restantes o un error.",
-    {type:"object", properties:{disciplina:{type:"string"}, nivel:{type:"integer"}, poder:{type:"string"}, sangre:{type:"integer"}, fv:{type:"integer"}}, required:["disciplina","nivel","poder"]},
-    i => { const r = usarPoder(String(i.disciplina), Number(i.nivel)||1, String(i.poder), Number(i.sangre)||0, Number(i.fv)||0);
+    {type:"object", properties:{disciplina:{type:"string"}, nivel:{type:"integer"}, poder:{type:"string"}, sangre:{type:"integer"}, fv:{type:"integer"}, senda:{type:"string", description:"Solo Taumaturgia: la Senda del poder (sangre, " + Object.keys(SENDAS_TAUM).join(", ") + "). Si se omite, es la Senda de la Sangre."}}, required:["disciplina","nivel","poder"]},
+    i => { const r = usarPoder(String(i.disciplina), Number(i.nivel)||1, String(i.poder), Number(i.sangre)||0, Number(i.fv)||0, i.senda ? String(i.senda) : "");
       turnoActual.agregar({rol:"sistema", clase:"rule", texto:`${i.poder} · ${lab(norm(i.disciplina))} ${i.nivel}${i.sangre?` · −${i.sangre} Sangre`:""}${i.fv?` · −${i.fv} FV`:""}`}); return r; });
   tool("gastar_sangre", "Gasta Sangre del personaje (Atributos físicos, parecer humano, Celeridad, etc.). ignora_limite solo para Celeridad.",
     {type:"object", properties:{puntos:{type:"integer"}, motivo:{type:"string"}, ignora_limite:{type:"boolean"}}, required:["puntos","motivo"]},
@@ -1542,7 +1554,7 @@ function renderFicha(){
   <section class="blk"><h2>Atributos</h2><div class="cols">${Object.entries(ATR).map(([g,l]) => `<div class="col"><h3>${lab(g)}</h3>${traits(F.atributos,l)}</div>`).join("")}</div></section>
   <section class="blk"><h2>Habilidades</h2><div class="cols">${habCols}</div></section>
   ${especialidadesHTML()}
-  <section class="blk"><h2>Disciplinas</h2>${Object.entries(F.disciplinas||{}).map(([d,n]) => `<div class="disc"><div class="trait" style="border:0;padding:0">${infoBtn(d, n, "<b>"+lab(d)+"</b>")}${dots(n)}</div>${(F.poderes||[]).filter(p=>p.disciplina===d).map(p=>poderHTML(p)).join("")}</div>`).join("") || '<p class="pen">Sin Disciplinas.</p>'}</section>
+  <section class="blk"><h2>Disciplinas</h2>${Object.entries(F.disciplinas||{}).map(([d,n]) => `<div class="disc"><div class="trait" style="border:0;padding:0">${infoBtn(d, n, "<b>"+lab(d)+"</b>")}${dots(n)}</div>${poderesFicha(d)}</div>`).join("") || '<p class="pen">Sin Disciplinas.</p>'}</section>
   <section class="blk"><h2>Virtudes y Humanidad</h2>${traits({...F.virtudes, humanidad:F.humanidad}, ["humanidad",...VIRT])}</section>`)}
   ${fp("trasfondos", trasfondosHTML())}
   ${fp("estado", `
@@ -2027,21 +2039,115 @@ const TIRADA_PODER = {"Susurros Salvajes": "Manipulación + Trato con Animales (
 const PASIVA_CORTA = {celeridad:n => `Pasiva · +${n} dado${n>1?"s":""} a Destreza`, potencia:n => `Pasiva · +${n} dado${n>1?"s":""} a Fuerza`, fortaleza:n => `Pasiva · +${n} a la absorción`};
 // Poder con su nombre tocable: despliega abajo qué hace. Visible solo la tirada y el costo.
 function poderHTML(p){
-  const d = DESC_PODER[p.nombre];
+  const d = p.desc ?? DESC_PODER[p.nombre];
   const nom = d ? `<button type="button" class="pnom" data-poder aria-expanded="false">${esc(p.nombre)}</button>` : `<b style="color:var(--fg);font-weight:500">${esc(p.nombre)}</b>`;
   const nivel = Number(String(p.nombre).match(/ (\d+)$/)?.[1]) || 0;
-  const corto = TIRADA_PODER[p.nombre] || (PASIVA_CORTA[p.disciplina] && nivel ? PASIVA_CORTA[p.disciplina](nivel) : p.efecto);
+  const corto = p.tirada || TIRADA_PODER[p.nombre] || (PASIVA_CORTA[p.disciplina] && nivel ? PASIVA_CORTA[p.disciplina](nivel) : p.efecto);
   return `<p class="pod">${nom}${corto ? " · " + esc(corto) : ""}</p>${d ? `<p class="pdesc" hidden>${esc(d)}</p>` : ""}`;
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-poder]"); if(!b) return;
   const d = b.closest(".pod")?.nextElementSibling; if(!d || !d.classList.contains("pdesc")) return;
   d.hidden = !d.hidden; b.setAttribute("aria-expanded", String(!d.hidden)); });
-function poderesDe(dis){
+
+/* ---------- Sendas de Taumaturgia (V20 pág. 213-229) ----------
+   La Senda de la Sangre es la primaria: sube sola con el nivel de Taumaturgia (máx. 5) y sus poderes están en PODERES.taumaturgia.
+   Las demás son secundarias: se aprenden con experiencia (nueva 7 PX, después nivel actual × 4), con 2 niveles de Sangre como mínimo
+   y sin pasar a la Sangre (un punto menos) hasta que la Sangre llegue a 5. Cada poder: [nombre, costo extra, qué hace]. Todos cuestan 1 Sangre + FV (dif. nivel + 3). */
+const SENDAS_TAUM = {
+  conjuracion:{nombre:"Senda de la Conjuración", nota:"Los objetos son genéricos y perfectos, y no pueden ser más grandes que vos. Los éxitos dan la calidad: 1 sale malo, 5 casi perfecto.", niveles:[
+    ["Invocar la Forma Sencilla","1 FV por turno para mantenerlo","Creás un objeto simple e inanimado, sin partes móviles ni varios materiales: una porra, una tubería, una estaca, un bloque de piedra. Si no pagás 1 FV por turno, se desvanece."],
+    ["Permanencia","3 Sangre","El objeto simple pasa a ser real y permanente: ya no hace falta pagar FV para mantenerlo."],
+    ["Magia del Herrero","5 Sangre","Conjurás objetos complejos con partes móviles (una pistola, una bicicleta, una motosierra, un celular), siempre permanentes. Para algo muy complejo, además una tirada de Conocimientos (Artesanía, Tecnología…)."],
+    ["Revertir Conjuración","tirada extendida","Hacés desaparecer un objeto creado con esta Senda, tuyo o de otro: tenés que juntar tantos éxitos como el que lo creó."],
+    ["Poder sobre la Vida","10 Sangre","Conjurás criaturas o personas imitadas: obedecen órdenes simples, no tienen voluntad propia y a la semana se desvanecen. Se les puede aplicar Posesión de Dominación."]]},
+  clima:{nombre:"Control del Clima", nota:"Los éxitos dicen cuánto tarda en cambiar el tiempo (1 éxito: hasta un día; 5: casi al instante). Afecta unos 5 km. En interiores +2 a la dificultad. El Narrador sube o baja la dificultad según el clima del lugar.", niveles:[
+    ["Niebla","","Se ve y se oye peor: +1 a las tiradas de Percepción con vista u oído y los ataques a distancia alcanzan la mitad. También brisa ligera (+1 al olfato) o un cambio de temperatura de unos 5 °C."],
+    ["Lluvia o nieve","","Como la niebla pero peor: +2 a Percepción y +2 a la dificultad de Conducir."],
+    ["Vientos Fuertes","","Viento de unos 50 km/h con ráfagas del doble: +1 a ataques con armas de fuego y +2 con arcos o arrojadizas; en ráfagas, Destreza dif. 6 para no caerte. Cambio de temperatura de hasta 10 °C."],
+    ["Tormenta","","Los efectos de la lluvia y los vientos fuertes juntos."],
+    ["Rayo","Percepción + Ocultismo para apuntar","Un rayo que hace 10 dados de daño letal, sin sumar armadura para absorber. Para pegarle a alguien: Percepción + Ocultismo (dif. 6 al aire libre, 8 a cubierto, 10 dentro de un edificio junto a una ventana)."]]},
+  corrupcion:{nombre:"Senda de la Corrupción", nota:"No podés tener más nivel en esta Senda que tu Subterfugio.", niveles:[
+    ["Contradecir","a la vista · el blanco resiste Percepción + Subterfugio","Hacés que el blanco haga lo contrario de lo que iba a hacer, siempre algo más negativo. Resiste con Percepción + Subterfugio (dif. éxitos + 2). No sirve en combate ni en acciones reflejas."],
+    ["Subvertir","contacto visual · Percepción + Subterfugio","Soltás el lado oscuro del blanco: actúa según deseos reprimidos durante 5 minutos (1 éxito) hasta una semana (5). Resiste Percepción + Subterfugio (dif. tu Manipulación + Subterfugio)."],
+    ["Disociar","tocar · el blanco resiste FV","Rompés los lazos sociales del blanco: −3 dados en todas sus tiradas Sociales de 5 minutos a una semana según los éxitos. Resiste con FV (dif. tu Manipulación + Empatía)."],
+    ["Adicción","tocar · Autocontrol o Instinto","Creás una adicción a una sensación, sustancia o acción. Cada noche sin dosis, −1 dado acumulativo en todo. Dura tantas semanas como tu Manipulación. Resiste Autocontrol o Instinto (dif. éxitos + 3)."],
+    ["Dependencia","una conversación · Autocontrol o Instinto","Atás la psique del blanco a la tuya una noche por éxito: −1 dado en todo si no está con vos, la mitad de dados para resistir tu control mental o social, y no recupera FV lejos tuyo."]]},
+  elemental:{nombre:"Dominio Elemental", nota:"Solo funciona sobre lo que no tiene vida: no sirve para animar un árbol (para eso, la Senda Verde).", niveles:[
+    ["Fuerza Elemental","","Repartís 3 puntos entre Fuerza y Resistencia durante tantos turnos como éxitos (1 FV extra suma un turno). No se acumula."],
+    ["Lenguas de Madera","","Hablás con el espíritu de un objeto inanimado y te cuenta lo que \"vivió\". Más éxitos, más información y más precisa."],
+    ["Animar lo Inmóvil","1 FV si sacás menos de 4 éxitos","Animás objetos no mayores que una persona, tantos como tu Inteligencia, mientras los veas (o hasta una hora). Se mueven según su forma: un banquito corre, una pistola se escurre de la mano."],
+    ["Forma Elemental","","Tomás la forma de un objeto inanimado de tu masa (un escritorio, una estatua, una bici). Con 3 éxitos o más podés usar sentidos y Disciplinas. Dura la noche o hasta que lo revertís."],
+    ["Invocar Elemental","Manipulación + Ocultismo para controlarlo","Llamás a un elemental de tierra, aire, fuego o agua, con 3 en todos los Atributos Físicos y Mentales (+1 Físico por éxito). Para controlarlo, Manipulación + Ocultismo (dif. éxitos + 4)."]]},
+  llamas:{nombre:"Encanto de las Llamas", nota:"El fuego se tiene que soltar para que queme; en tu mano solo da luz. Con 1 éxito lo ponés en tu mano; con 5, en cualquier lugar que veas (unos 10 m por éxito). Solo se absorbe con Fortaleza.", niveles:[
+    ["Vela","absorber dif. 3","Una llama pequeña. 1 nivel agravado por turno."],
+    ["Mano de fuego","absorber dif. 4","Fuego del tamaño de una mano. 1 nivel agravado por turno."],
+    ["Fogata","absorber dif. 5","Una fogata. 2 niveles agravados por turno."],
+    ["Pira","absorber dif. 7","Una pira. 2 niveles agravados por turno."],
+    ["Infierno","absorber dif. 9","Un incendio enorme. 3 niveles agravados por turno."]]},
+  destruccion:{nombre:"Manos de Destrucción", nota:"Es una Senda del Sabbat, poco común en la Camarilla.", niveles:[
+    ["Deterioro","","El objeto inanimado que tocás envejece 10 años por cada minuto de contacto. No afecta a vampiros."],
+    ["Retorcer la Madera","mirada, sin tocar","Retorcés y combás madera que veas: 25 kg por cada Sangre que gastes. Sirve para inutilizar las estacas de un grupo entero."],
+    ["Toque Corrosivo","1 Sangre por turno de ácido","Segregás un ácido que atraviesa medio centímetro de acero o 7 cm de madera. Como ataque cuerpo a cuerpo hace daño agravado. Sos inmune a tu propio ácido."],
+    ["Atrofia","el blanco resiste Resistencia + Atletismo (dif. 8)","Marchitás un miembro del blanco. Con 3 o más éxitos resiste; con menos queda con dificultad +1 o +2 con esa parte, o tullida del todo si falla. En mortales es permanente; un vampiro regenera con 5 Sangre."],
+    ["Convertir en Polvo","el blanco resiste Resistencia + Coraje (dif. 8)","Cada éxito envejece 10 años al blanco; si saca más éxitos que vos, no le pasa nada. En un vampiro solo baja 1 la Apariencia por una noche."]]},
+  marte:{nombre:"Senda de Marte", nota:"Es una Senda del Sabbat; algunos Tremere la aprenden. Está pensada para pelear.", niveles:[
+    ["Grito de Guerra","una vez por escena","Durante la escena sumás 1 a tu Coraje y, contra poderes hostiles, tu Fuerza de Voluntad cuenta 1 más (no la reserva)."],
+    ["Golpe Certero","un ataque","Un ataque de Pelea o Pelea con Armas impacta solo, con 1 éxito (sin dados extra de daño). El defensor puede esquivar o parar con 1 éxito. No sirve con ataques múltiples."],
+    ["Danza del Viento","dura la escena","Podés esquivar todos los ataques que quieras con tu reserva completa en el turno."],
+    ["Corazón Intrépido","una vez por escena","+1 a Fuerza, Destreza y Resistencia durante la escena. Después, dos horas de calma o perdés 1 Sangre cada 15 minutos."],
+    ["Compañeros de Armas","tocar a cada uno","Elegís uno de los poderes inferiores de la Senda y lo extendés a otros que tocás, mientras salgan las tiradas y pagues la Sangre."]]},
+  mental:{nombre:"Movimiento Mental", nota:"Telequinesia. Los éxitos son turnos de control (5 éxitos o más: toda la escena). Si el blanco está vivo, resiste con FV opuesta cada vez. Desde el nivel 3 podés levitar y \"volar\" a paso de carrera; desde el 4, arrojar objetos con Fuerza = nivel.", niveles:[
+    ["Medio kilo","","Mové objetos de hasta medio kilo."],
+    ["Diez kilos","","Mové objetos de hasta 10 kg."],
+    ["Cien kilos","","Mové objetos de hasta 100 kg. También levitás y \"volás\" a la velocidad de uno que corre."],
+    ["Doscientos cincuenta kilos","","Mové hasta 250 kg y arrojás objetos con una Fuerza igual a tu nivel en la Senda."],
+    ["Quinientos kilos","","Mové hasta 500 kg."]]},
+  neptuno:{nombre:"Poder de Neptuno", nota:"Casi siempre sobre agua estancada. Desde el nivel 3 podés especializarte en agua dulce o salada: −1 a la dificultad con la elegida y +1 con la otra.", niveles:[
+    ["Ojos del Mar","mirar una masa de agua","Ves lo que pasó en y alrededor de una masa de agua estancada: 1 éxito un día, 2 una semana, 3 un mes, 4 un año, 5 diez años."],
+    ["Prisión de Agua","","El agua cobra vida y aprisiona a alguien: tiene que sacar tantos éxitos como los tuyos en Fuerza (dif. 8) para soltarse."],
+    ["Sangre en Agua","tocar","Cada éxito convierte 1 Sangre del blanco en agua; un éxito mata a un mortal en 5 minutos. Los vampiros sufren las penalizaciones como si fueran niveles de daño."],
+    ["Muro Fluido","3 FV","Levantás un muro de agua recto, en tu línea de visión, hasta el amanecer: cada éxito da 3 m de ancho o de alto. Cruzarlo exige 3 éxitos de FV (dif. 9) a seres sobrenaturales."],
+    ["Deshidratar","el blanco resiste Resistencia + Fortaleza (dif. 9)","Le sacás el agua a alguien que veas: 1 nivel letal por éxito neto, sin absorción. Los vampiros pierden Sangre. Tiene que tirar Coraje (dif. éxitos + 3) para actuar el turno siguiente."]]},
+  tecnomancia:{nombre:"Senda de la Tecnomancia", nota:"La más nueva de las Sendas; los Tremere conservadores la rechazan.", niveles:[
+    ["Análisis","tocar el aparato","Entendés para qué sirve un aparato y cómo se usa: 1 éxito lo básico, 3 manejarlo, 5 aprovecharlo entero. Dura tantos minutos como tu Inteligencia. Con software, +2 a la dificultad."],
+    ["Sobrecarga","hasta 10 × FV metros (+1 si no tocás)","Sobrecargás la alimentación de un aparato: 1 éxito lo interrumpe un turno, 3 lo rompe, 5 lo deja inservible. Sirve para borrar bases de datos."],
+    ["Cifrado/Descifrado","tocar","Codificás un aparato o datos: tus éxitos se suman a la dificultad de quien quiera usarlo sin vos. Dura tantas semanas como tu FV permanente. También sirve para romper el cifrado de otro (+1 dif.)."],
+    ["Acceso Remoto","un aparato que veas","Usás un aparato sin tocarlo: podés usar tantos dados de la Habilidad como éxitos, durante tantos turnos como éxitos. Si lo destruyen mientras tanto, recibís 5 dados contundentes."],
+    ["Teletrabajo","1 FV","Proyectás tu conciencia a Internet desde un aparato conectado: 5 minutos por éxito y distancia según éxitos (1: 40 km … 5: todo el mundo). Si se corta la conexión, 8 dados contundentes."]]},
+  venganza:{nombre:"Senda de la Venganza del Padre", nota:"Solo afecta a vampiros (no a mortales ni Ghouls). Hay que pronunciar la condena en voz alta y el blanco tiene que oírla (o leerla). Es una Senda del Sabbat.", niveles:[
+    ["Letanía de Zillah","","Revelás los Vínculos de Sangre y Vinculi del blanco, con los nombres y una imagen de los otros vampiros."],
+    ["Orgullo de la Bruja","dura una noche","La Apariencia del blanco baja a 0 y sus tiradas Sociales fallan, salvo para intimidar o coaccionar."],
+    ["Banquete de Cenizas","dura una semana","El blanco no puede tomar sangre y solo se alimenta de cenizas (medio litro = 1 Sangre), que sirven solo para despertar."],
+    ["Censura de Uriel","dura una semana","Cualquier luz le duele y la luz brillante le hace 1 nivel agravado por turno."],
+    ["Despedida","3 turnos para pronunciarla · dura una semana","El blanco vuelve a su Generación original, con la pérdida de Rasgos que implique."]]},
+  verde:{nombre:"Senda Verde", nota:"Sirve sobre cualquier planta, viva o muerta. No hace que las plantas se arranquen del suelo y caminen (salvo el nivel 5).", niveles:[
+    ["Sabiduría Vegetal","tocar la planta","Hablás con el espíritu de una planta y te responde, con más detalle cuantos más éxitos tengas."],
+    ["Acelerar el Paso de las Estaciones","tocar la planta","Acelerás el crecimiento o la muerte de una planta. 3 éxitos inutilizan un arma de madera; 5 la desintegran en la mano de quien la lleva."],
+    ["Danza de las Enredaderas","","Animás vegetación de hasta tu propia masa, un turno por éxito, bajo tu control. En combate tienen Destreza y Fuerza de la mitad de tu FV y Pelea un punto menos que vos."],
+    ["Refugio Verde","en una zona de vegetación densa","Tejés una semiesfera de ramas de 1,80 m que protege hasta el amanecer. Para entrar sin permiso hay que sacar más éxitos que vos en Astucia + Supervivencia. Con 4 éxitos o más frena el sol."],
+    ["Despertar a los Gigantes del Bosque","1 Sangre más 1 por éxito","Animás un árbol entero durante un turno por éxito: Fuerza y Resistencia = tu Taumaturgia, Destreza 2 y tu Pelea. Es inmune al contundente y el letal le hace la mitad."]]}
+};
+const sendaTaum = (k, n) => { const x = SENDAS_TAUM[k], t = x.niveles[n];
+  return {disciplina:"taumaturgia", senda:k, sendaNombre:x.nombre, nombre:t[0], efecto:t[2], desc:t[2], tirada:`1 Sangre · FV (dif. ${n + 4})${t[1] ? " · " + t[1] : ""}`}; };
+// ¿Por qué no puede subir esta Senda secundaria? "" si puede (V20 pág. 213-214 y 124).
+function bloqueoSenda(f, k, actual){
+  const sangre = Math.min(5, f.disciplinas?.taumaturgia || 0);
+  if(sangre < 2) return "Para aprender una Senda secundaria hacen falta al menos 2 niveles en la Senda de la Sangre (Taumaturgia 2).";
+  if(sangre < 5 && actual + 1 > sangre - 1) return `La Senda de la Sangre (${sangre}) tiene que estar un punto por encima de cualquier Senda secundaria hasta llegar a 5.`;
+  if(k === "corrupcion" && actual + 1 > (f.habilidades?.subterfugio || 0)) return `La Senda de la Corrupción no puede pasar tu Subterfugio (${f.habilidades?.subterfugio || 0}).`;
+  return "";
+}
+function poderesFicha(d){
+  let ult = null;
+  return (F.poderes||[]).filter(p => p.disciplina === d).map(p => { const cab = p.senda && p.senda !== ult ? `<p class="pen sda">${esc(p.sendaNombre)}</p>` : ""; ult = p.senda || ult; return cab + poderHTML(p); }).join("");
+}
+function poderesDe(dis, sendas = {}){
   const out = [];
   for(const [d,n] of Object.entries(dis)){
     if(!n) continue;
     if(PASIVAS[d]){ out.push({disciplina:d, nombre:`${lab(d)} ${n}`, efecto:PASIVAS[d]}); continue; }
-    (PODERES[d]||[]).slice(0,n).forEach(t => { const i = t.indexOf(":"); out.push({disciplina:d, nombre:i>0?t.slice(0,i):t.replace(/\.$/,""), efecto:i>0?t.slice(i+1).trim():""}); });
+    (PODERES[d]||[]).slice(0,n).forEach(t => { const i = t.indexOf(":"); out.push({disciplina:d, ...(d === "taumaturgia" ? {senda:"sangre", sendaNombre:"Senda de la Sangre"} : {}), nombre:i>0?t.slice(0,i):t.replace(/\.$/,""), efecto:i>0?t.slice(i+1).trim():""}); });
+    if(d === "taumaturgia") for(const [k,v] of Object.entries(sendas.taumaturgia || {})) if(SENDAS_TAUM[k]) for(let i = 0; i < Math.min(v, 5); i++) out.push(sendaTaum(k, i));
   }
   return out;
 }
@@ -2736,7 +2842,14 @@ function mostrarInfo(k, v){
       const fila = `<span class="dots">${"●".repeat(i+1)}<i>${"●".repeat(4-i)}</i></span><span>${dsc ? `<u class="pn">${esc(nom)}</u>${esc(resto)}` : esc(t)}</span>`;
       return `<li class="${i+1===v?"actual":""}">${dsc ? `<details class="pdet"><summary>${fila}</summary><p>${esc(dsc)}</p></details>` : fila}</li>`; }).join("")}</ol>
       ${niv.some(t => DESC_PODER[String(t).split(":")[0].replace(/\.$/, "").trim()]) ? '<p class="pen">Tocá un poder para ver qué hace.</p>' : ""}` : ""}
+    ${k === "taumaturgia" ? sendasInfoHTML() : ""}
     <div class="row"><button class="btn ghost" type="button" id="info-x">Cerrar</button></div>`, () => { $("#info-x").onclick = cerrarSheet; $("#info-x").focus(); });
+}
+function sendasInfoHTML(){
+  return `<h3 style="margin:14px 0 4px;font-size:18px">Otras Sendas</h3>
+    <p class="pen">Se aprenden con experiencia, después de tener al menos 2 niveles en la Senda de la Sangre (7 PX la primera vez, después nivel actual × 4). Una Senda secundaria siempre queda un punto por debajo de la Sangre hasta que esta llega a 5. El Narrador decide a cuáles tenés acceso.</p>` +
+    Object.entries(SENDAS_TAUM).map(([k,x]) => `<details class="pdet sendas"><summary><span>${esc(x.nombre)}${F?.sendas?.taumaturgia?.[k] ? ` · tenés ${F.sendas.taumaturgia[k]}` : ""}</span></summary>
+      <p>${esc(x.nota)}</p>${x.niveles.map((t,i) => poderHTML(sendaTaum(k,i))).join("")}</details>`).join("");
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-info]"); if(!b) return; e.preventDefault(); mostrarInfo(b.dataset.info, Number(b.dataset.v)||0); });
 
@@ -3828,7 +3941,7 @@ function guardarEdicion(){
   for(const d of Object.keys(nuevo.disciplinas||{})) if(!nuevo.disciplinas[d]) delete nuevo.disciplinas[d];
   for(const h of Object.keys(nuevo.habilidades||{})) if(!nuevo.habilidades[h]) delete nuevo.habilidades[h];
   for(const t of Object.keys(nuevo.trasfondos||{})) if(!nuevo.trasfondos[t]) delete nuevo.trasfondos[t];
-  if(JSON.stringify(nuevo.disciplinas) !== JSON.stringify(F.disciplinas)) nuevo.poderes = poderesDe(nuevo.disciplinas || {});
+  if(JSON.stringify(nuevo.disciplinas) !== JSON.stringify(F.disciplinas)) nuevo.poderes = poderesDe(nuevo.disciplinas || {}, nuevo.sendas);
   const [, reserva] = GEN[nuevo.generacion] || GEN[13]; nuevo.sangre = Math.min(nuevo.sangre, reserva);
   F = nuevo; EDIT = null;
   evento("edicion_manual", {motivo, cambios});
@@ -3843,6 +3956,7 @@ function costoXP(tipo, actual, deClan){
   if(tipo === "disciplina") return actual === 0 ? 10 : (F.clan === "caitiff" ? actual * 6 : actual * (deClan ? 5 : 7));
   if(tipo === "virtud" || tipo === "humanidad") return actual * 2;
   if(tipo === "fuerza_voluntad") return actual;
+  if(tipo === "senda") return actual === 0 ? 7 : actual * 4;
   throw new ReglaError("Tipo de Rasgo desconocido.");
 }
 function abrirSumarXP(){
@@ -3868,20 +3982,22 @@ function abrirGastarXP(){
     atributo: Object.values(ATR).flat(),
     habilidad: HAB_ALL,
     disciplina: ["animalismo","auspex","celeridad","dementacion","dominacion","extincion","fortaleza","necromancia","obtenebracion","ofuscacion","potencia","presencia","protean","quimerismo","serpentis","taumaturgia","vicisitud"],
+    senda: Object.keys(SENDAS_TAUM),
     virtud: VIRT, humanidad:["humanidad"], fuerza_voluntad:["fuerza_voluntad"]});
-  const actual = () => X.tipo === "atributo" ? F.atributos[X.rasgo]||0 : X.tipo === "habilidad" ? F.habilidades?.[X.rasgo]||0 : X.tipo === "disciplina" ? F.disciplinas?.[X.rasgo]||0
+  const actual = () => X.tipo === "atributo" ? F.atributos[X.rasgo]||0 : X.tipo === "habilidad" ? F.habilidades?.[X.rasgo]||0 : X.tipo === "disciplina" ? F.disciplinas?.[X.rasgo]||0 : X.tipo === "senda" ? F.sendas?.taumaturgia?.[X.rasgo]||0
     : X.tipo === "virtud" ? F.virtudes[X.rasgo] : X.tipo === "humanidad" ? F.humanidad : F.fv_max;
   const pintar = () => {
     const clan = CLANES.find(c => c[1] === F.clan)?.[2] || [], deClan = clan.includes(X.rasgo);
     const a = actual(), tope = (X.tipo === "humanidad" || X.tipo === "fuerza_voluntad") ? 10 : maxGen(F);
-    const c = costoXP(X.tipo, a, deClan), puede = a < tope && c <= F.xp;
-    const nota = a >= tope ? `Ya está en su máximo (${tope}).` : c > F.xp ? `Cuesta ${c} PX y hay ${F.xp}.` :
+    const c = costoXP(X.tipo, a, deClan), bloqueo = X.tipo === "senda" && a < tope ? bloqueoSenda(F, X.rasgo, a) : "", puede = a < tope && c <= F.xp && !bloqueo;
+    const nota = a >= tope ? `Ya está en su máximo (${tope}).` : bloqueo ? bloqueo : c > F.xp ? `Cuesta ${c} PX y hay ${F.xp}.` :
+      X.tipo === "senda" ? (a === 0 ? "Senda secundaria nueva: hace falta un maestro y el visto bueno del Narrador. Cuesta 7 PX." : "Senda secundaria: cuesta nivel actual × 4.") :
       X.tipo === "disciplina" && !deClan ? (a === 0 ? "Disciplina nueva fuera del clan: necesita un maestro y el visto bueno del Narrador." : "Disciplina fuera del clan: cuesta nivel actual × 7.") :
       X.tipo === "virtud" ? "Subir una Virtud no sube la Humanidad ni la Fuerza de Voluntad." : "";
-    const nombre = k => k === "fuerza_voluntad" ? "Fuerza de Voluntad" : lab(k);
+    const nombre = k => k === "fuerza_voluntad" ? "Fuerza de Voluntad" : SENDAS_TAUM[k]?.nombre || lab(k);
     $("#gx-body").innerHTML = `
-      <div class="field"><label for="gx-t">Qué subir</label><select id="gx-t">${[["atributo","Atributo"],["habilidad","Habilidad"],["disciplina","Disciplina"],["virtud","Virtud"],["humanidad","Humanidad"],["fuerza_voluntad","Fuerza de Voluntad"]].map(([k,t]) => `<option value="${k}" ${k===X.tipo?"selected":""}>${t}</option>`).join("")}</select></div>
-      ${listas()[X.tipo].length > 1 ? `<div class="field"><label for="gx-r">Rasgo</label><select id="gx-r">${listas()[X.tipo].map(k => { const v = X.tipo==="atributo"?F.atributos[k]||0:X.tipo==="habilidad"?F.habilidades?.[k]||0:X.tipo==="disciplina"?F.disciplinas?.[k]||0:F.virtudes[k];
+      <div class="field"><label for="gx-t">Qué subir</label><select id="gx-t">${[["atributo","Atributo"],["habilidad","Habilidad"],["disciplina","Disciplina"],...(F.disciplinas?.taumaturgia ? [["senda","Senda de Taumaturgia"]] : []),["virtud","Virtud"],["humanidad","Humanidad"],["fuerza_voluntad","Fuerza de Voluntad"]].map(([k,t]) => `<option value="${k}" ${k===X.tipo?"selected":""}>${t}</option>`).join("")}</select></div>
+      ${listas()[X.tipo].length > 1 ? `<div class="field"><label for="gx-r">Rasgo</label><select id="gx-r">${listas()[X.tipo].map(k => { const v = X.tipo==="atributo"?F.atributos[k]||0:X.tipo==="habilidad"?F.habilidades?.[k]||0:X.tipo==="disciplina"?F.disciplinas?.[k]||0:X.tipo==="senda"?F.sendas?.taumaturgia?.[k]||0:F.virtudes[k];
         return `<option value="${k}" ${k===X.rasgo?"selected":""}>${nombre(k)} (${v})${X.tipo==="disciplina"&&clan.includes(k)?" · de clan":""}</option>`; }).join("")}</select></div>` : ""}
       <div class="money"><span>${nombre(X.rasgo)} ${a} → ${a+1}</span><span class="num">${a < tope ? c+" PX" : "—"}</span></div>
       <p class="pen" style="margin:0 0 6px">Disponible: ${F.xp} PX</p><p class="err">${esc(nota)}</p>
@@ -3895,7 +4011,8 @@ function abrirGastarXP(){
       F.xp -= c2;
       if(X.tipo === "atributo") F.atributos[X.rasgo] = a2 + 1;
       else if(X.tipo === "habilidad") (F.habilidades ||= {})[X.rasgo] = a2 + 1;
-      else if(X.tipo === "disciplina"){ (F.disciplinas ||= {})[X.rasgo] = a2 + 1; F.poderes = poderesDe(F.disciplinas); }
+      else if(X.tipo === "senda"){ ((F.sendas ||= {}).taumaturgia ||= {})[X.rasgo] = a2 + 1; F.poderes = poderesDe(F.disciplinas, F.sendas); }
+      else if(X.tipo === "disciplina"){ (F.disciplinas ||= {})[X.rasgo] = a2 + 1; F.poderes = poderesDe(F.disciplinas, F.sendas); }
       else if(X.tipo === "virtud") F.virtudes[X.rasgo] = a2 + 1;
       else if(X.tipo === "humanidad") F.humanidad = a2 + 1;
       else { F.fv_max = a2 + 1; F.fv = Math.min(F.fv + 1, F.fv_max); }

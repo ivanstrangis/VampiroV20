@@ -995,6 +995,33 @@ await prueba("creador: Disciplinas comunes de otros clanes con puntos gratuitos 
   await page.evaluate(() => { W = nuevoW(); mostrarPestana("chat"); });
 });
 
+await prueba("Taumaturgia: Sendas secundarias con experiencia, límites del manual y poderes en la ficha", async () => {
+  await page.evaluate(() => { F.disciplinas = {...F.disciplinas, taumaturgia: 1}; F.sendas = undefined; F.xp = 80; F.habilidades = {...F.habilidades, subterfugio: 1}; F.poderes = poderesDe(F.disciplinas, F.sendas); });
+  const b = (k, a) => page.evaluate(([k, a]) => bloqueoSenda(F, k, a), [k, a]);
+  assert.match(await b("conjuracion", 0), /al menos 2 niveles/);
+  await page.evaluate(() => { F.disciplinas.taumaturgia = 3; });
+  assert.equal(await b("conjuracion", 0), "");
+  assert.equal(await b("conjuracion", 1), "");
+  assert.match(await b("conjuracion", 2), /un punto por encima/);
+  assert.equal(await page.evaluate(() => costoXP("senda", 0)), 7);
+  assert.equal(await page.evaluate(() => costoXP("senda", 2)), 8);
+  await page.evaluate(() => { F.disciplinas.taumaturgia = 5; });
+  assert.equal(await b("conjuracion", 4), "", "con la Sangre en 5 puede llegar a 5");
+  assert.match(await b("corrupcion", 1), /Subterfugio/);
+  // por la hoja de experiencia
+  await page.evaluate(() => { F.disciplinas.taumaturgia = 3; renderFicha(); abrirGastarXP(); });
+  await page.selectOption("#gx-t", "senda"); await page.selectOption("#gx-r", "conjuracion");
+  await page.click("#gx-ok");
+  assert.equal(await page.evaluate(() => F.sendas.taumaturgia.conjuracion), 1);
+  assert.equal(await page.evaluate(() => F.xp), 73);
+  assert.ok(await page.evaluate(() => F.poderes.some(p => p.senda === "conjuracion" && p.nombre === "Invocar la Forma Sencilla")));
+  // el Narrador puede usar el poder, y no los de nivel que no tiene
+  assert.equal(await page.evaluate(() => usarPoder("taumaturgia", 1, "Invocar la Forma Sencilla", 1, 0, "conjuracion").ok), true);
+  assert.match(await page.evaluate(() => { try { usarPoder("taumaturgia", 2, "Permanencia", 1, 0, "conjuracion"); return "ok"; } catch(e){ return e.message; } }), /requiere nivel 2/);
+  await page.evaluate(() => cerrarSheet()); await page.waitForTimeout(400);
+  await page.evaluate(() => { F.disciplinas.taumaturgia = 0; delete F.disciplinas.taumaturgia; F.sendas = undefined; F.poderes = poderesDe(F.disciplinas, F.sendas); });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
