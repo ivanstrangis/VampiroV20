@@ -5199,6 +5199,43 @@ function crearMotorAnthropic(cfg){
   ask.limits = async () => ({tools:{maxCount:0}});
   return ask;
 }
+/* Claude dentro de una vista que no deja pasar herramientas a sample(): las herramientas se piden por texto.
+   Claude escribe «@@herramienta {…}» en líneas aparte, la página las ejecuta y le devuelve los resultados en el turno siguiente. */
+function claudeSinHerramientas(base){
+  const LINEA = /^[ \t]*@@herramienta[ \t]*(\{.*\})[ \t]*$/gm;
+  const limpiar = t => t.replace(LINEA, "").replace(/\n?[ \t]*@@[^\n]*$/, "").replace(/\n{3,}/g, "\n\n");
+  async function ask(input, opts = {}){
+    const tools = opts.tools || [], resto = {...opts, cache:false}; delete resto.tools;
+    if(!tools.length) return base(input, resto);
+    const guia = `[Herramientas del juego. Para usar una, escribí al final de tu respuesta una línea aparte por llamada, con este formato exacto:\n@@herramienta {"nombre":"<herramienta>","datos":{...}}\nDespués de esas líneas no escribas nada más: la página las ejecuta y te devuelve los resultados para que sigas. Si no necesitás ninguna, respondé normal sin esas líneas.\nHerramientas disponibles:\n`
+      + tools.map(t => `- ${t.name}: ${t.description || ""} | datos: ${JSON.stringify(t.inputSchema || {type:"object", properties:{}})}`).join("\n") + "]\n\n";
+    const msgs = entrada(input).map(m => ({...m}));
+    msgs[0].content = guia + msgs[0].content;
+    let acumulado = "";
+    for(let vuelta = 0; vuelta < 8; vuelta++){
+      const previo = acumulado;
+      const r = await base(msgs, {...resto, onText: resto.onText && (({text}) => resto.onText({text:previo + limpiar(text), delta:""}))});
+      const texto = r.text || "", llamadas = [];
+      for(const m of texto.matchAll(LINEA)){ try { const j = JSON.parse(m[1]); if(j?.nombre) llamadas.push(j); } catch(_){} }
+      acumulado += limpiar(texto);
+      if(!llamadas.length) return {text:acumulado};
+      msgs.push({role:"assistant", content:texto});
+      const lineas = []; let cierra = false;
+      for(const c of llamadas){
+        const t = tools.find(x => x.name === c.nombre); let res;
+        try { if(!t) throw new Error("Herramienta desconocida: " + c.nombre); res = await t.execute(c.datos && typeof c.datos === "object" ? c.datos : {}); if(t.cierraTurno) cierra = true; }
+        catch(e){ res = "Error: " + (e.message || e); }
+        lineas.push(`${c.nombre} → ${typeof res === "string" ? res : JSON.stringify(res ?? "ok")}`);
+      }
+      if(opts.signal?.aborted) throw errIA("cancelled");
+      if(cierra) return {text:acumulado};
+      msgs.push({role:"user", content:"Resultados de las herramientas:\n" + lineas.join("\n") + "\nSeguí."});
+    }
+    return {text:acumulado};
+  }
+  ask.json = base.json && ((p, o = {}) => base.json(p, o)); ask.limits = async () => ({tools:{maxCount:0}});
+  return ask;
+}
 const fabricaMotor = tipo => MOTORES[tipo]?.protocolo === "anthropic" ? crearMotorAnthropic : crearMotorOpenAI;
 function elegirMotor(){
   const ok = MOTOR.tipo !== "claude" && MOTOR.base && MOTOR.modelo && (MOTOR.clave || MOTOR.tipo === "otro");
@@ -5210,7 +5247,7 @@ function abrirMotor(despues){
   const m = MOTOR, claudeOk = !!SAMPLE_CLAUDE;
   const tipos = Object.entries(MOTORES).filter(([k]) => k !== "claude" || PLATAFORMA === "claude");
   abrirSheet(`<h2>Motor del Narrador</h2>
-  ${HAY_IA() ? "" : `<p class="pen sep" id="mo-aviso">Para jugar con Narrador IA necesitás una clave. Con Groq es gratis: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Sin clave podés jugar en mesa igual.</p>`}
+  ${HAY_IA() ? "" : PLATAFORMA === "claude" ? `<p class="pen sep" id="mo-aviso">Esta vista de Claude no le dio permiso a la página para usar tu cuenta. Aceptá el permiso cuando lo pida, o abrí el artefacto en claude.ai. Mientras tanto podés usar una clave: con Groq es gratis (<a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>).</p>` : `<p class="pen sep" id="mo-aviso">Para jugar con Narrador IA necesitás una clave. Con Groq es gratis: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Sin clave podés jugar en mesa igual.</p>`}
   <p class="pen sep">Elegí qué IA narra tu crónica. La clave se guarda solo en este dispositivo y nunca se exporta.</p>
   <div class="field"><label for="mo-tipo">Motor</label><select id="mo-tipo">${tipos.map(([k, v]) => `<option value="${k}" ${m.tipo === k ? "selected" : ""} ${k === "claude" && !claudeOk ? "disabled" : ""}>${esc(v.nombre)}</option>`).join("")}</select></div>
   <p class="pen sep" id="mo-nota"></p>
@@ -5324,7 +5361,11 @@ async function conectar(){
     DB = crearDB(RAW);
     try { DESCARGAS = await window.claude?.use?.("downloads"); } catch(_){ DESCARGAS = null; }
     try { SAMPLE_CLAUDE = await window.claude?.use?.("sample"); } catch(_){ SAMPLE_CLAUDE = null; }
-    if(SAMPLE_CLAUDE){ try { const lim = await SAMPLE_CLAUDE.limits(); TOOLS_CLAUDE = lim?.tools?.maxCount || 0; if(!lim?.tools) SAMPLE_CLAUDE = null; } catch(_){} }
+    if(SAMPLE_CLAUDE){
+      let lim = null; try { lim = await SAMPLE_CLAUDE.limits(); } catch(_){}
+      TOOLS_CLAUDE = lim?.tools?.maxCount || 0;
+      if(!lim?.tools) SAMPLE_CLAUDE = claudeSinHerramientas(SAMPLE_CLAUDE);   // esta vista no deja pasar herramientas: se piden por texto
+    }
   } else {
     PLATAFORMA = "local";
     try { RAW = await crearAlmacenLocal(); USER = await perfilLocal(RAW); YO = await USER.id(); } catch(e){ console.warn("almacén local", e); RAW = null; }

@@ -23,7 +23,7 @@ await page.addInitScript(() => {
       onSnapshot: fn => { Promise.resolve().then(() => fn(snap(p))); return () => {}; } }),
     collection: pre => ({ where: (c, o, val) => ({ get: async () => ({ docs: [...mem].filter(([k, v]) => k.startsWith(pre + "/") && v[c] === val).map(([k, v]) => ({ id: k.slice(pre.length + 1), data: () => copia(v) })) }) }) })
   };
-  const sample = Object.assign(async () => ({ text: "ok" }), { json: async () => ({}), limits: async () => ({ tools: { maxCount: 20 } }) });
+  const sample = Object.assign(async () => ({ text: "ok" }), { json: async () => ({}), limits: async () => ({ maxPromptBytes: 262144 }) });
   window.claude = { use: async n => ({ db, user: { id: async () => "u1" }, downloads: { save: async () => {} }, sample })[n] || null };
 });
 

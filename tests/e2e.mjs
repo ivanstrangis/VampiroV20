@@ -801,6 +801,23 @@ await prueba("menú: los personajes cargados van en su propia caja, aparte de la
   assert.ok(r.opc.includes("Opciones"));
   await page.evaluate(() => cerrarSheet());
 });
+await prueba("Claude sin herramientas: las pide por texto, las ejecuta y sigue", async () => {
+  const r = await page.evaluate(async () => {
+    const vistos = []; let n = 0;
+    const falso = async (input, o = {}) => { vistos.push({tools: !!o.tools, ult: input[input.length - 1].content.slice(0, 60)}); n++;
+      if(n === 1) return {text: "Tiro los dados." + String.fromCharCode(10) + '@@herramienta {"nombre":"tirar","datos":{"dados":3}}'};
+      return {text: "Sacaste 2 éxitos."}; };
+    falso.json = async () => ({});
+    const ask = claudeSinHerramientas(falso), usadas = [], partes = [];
+    const out = await ask([{role:"user", content:"Atacá"}], { tools: [{name:"tirar", description:"d", inputSchema:{type:"object"}, execute: async d => { usadas.push(d); return "2 éxitos"; }}], onText: ({text}) => partes.push(text) });
+    return {out: out.text, usadas, vistos, vio: partes.some(t => t.includes("@@")), limits: await ask.limits()};
+  });
+  assert.ok(r.out.includes("Tiro los dados.") && r.out.includes("Sacaste 2 éxitos.") && !r.out.includes("@@"));
+  assert.deepEqual(r.usadas, [{dados: 3}]);
+  assert.ok(r.vistos.every(v => !v.tools), "no le pasa tools a Claude");
+  assert.match(r.vistos[1].ult, /Resultados de las herramientas/);
+  assert.equal(r.vio, false, "el jugador no ve las líneas @@herramienta");
+});
 await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
   const r = await page.evaluate(() => ["body", "#app", "button", ".screen", "input"].map(q => { const e = document.querySelector(q); return e ? getComputedStyle(e).touchAction : "manipulation"; }));
   assert.deepEqual([...new Set(r)], ["manipulation"]);
