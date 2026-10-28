@@ -1152,6 +1152,33 @@ await prueba("editar personaje: Guardar y Cancelar flotan abajo, a la altura del
   await page.click('#tabs [data-t="inv"]');
 });
 
+await prueba("dado rápido: «Personalizada» arma los dados con Atributo + Habilidad, Disciplina y heridas; Juego ya no tiene la tirada a medida", async () => {
+  await page.click('#tabs [data-t="juego"], #tabs [data-t="chat"]');
+  assert.equal(await page.locator("#j-medida").count(), 0, "la tirada a medida ya no está en Juego");
+  await page.evaluate(() => { F.atributos.fuerza = 3; F.habilidades.pelea = 2; F.disciplinas = {...F.disciplinas, potencia: 1}; F.salud = []; });
+  await page.click("#fab-dado");
+  await page.waitForSelector("#dr-pers");
+  assert.equal(await page.locator("#dp-caja").isHidden(), true);
+  await page.click("#dr-pers");
+  await page.selectOption("#dp-a", "fuerza"); await page.selectOption("#dp-b", "pelea");
+  assert.equal(await page.textContent("#dr-n"), "6", "Fuerza 3 + Pelea 2 + Potencia 1");
+  await page.click("#dp-disc");
+  assert.equal(await page.textContent("#dr-n"), "5", "sin sumar la Disciplina");
+  await page.click("#dp-mas"); await page.click("#dp-mas");
+  assert.equal(await page.textContent("#dr-n"), "7");
+  await foto("dado-personalizada");
+  await page.evaluate(() => { F.salud = ["L","L"]; });
+  await page.click("#dp-mas");   // refresca
+  assert.ok(await page.locator("#dp-pen").count() === 1, "aparece el botón de heridas");
+  const con = await page.textContent("#dr-n");
+  await page.click("#dp-pen");
+  assert.ok(Number(await page.textContent("#dr-n")) > Number(con), "sin restar heridas hay más dados");
+  await page.click("#dr-tirar"); await page.waitForSelector("#dr-res .d10");
+  assert.ok(await page.locator("#dr-res .d10").count() >= 1);
+  await page.click("#dr-x");
+  await page.evaluate(() => { F.salud = []; DP.a = ""; DP.b = ""; DP.mod = 0; DP.abierto = false; });
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);

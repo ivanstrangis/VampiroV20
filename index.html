@@ -299,6 +299,11 @@ details.esp-arma{margin-top:16px}
 .barra-ed{position:absolute;left:max(16px, env(safe-area-inset-left, 0px));right:calc(max(16px, env(safe-area-inset-right, 0px)) + 64px);bottom:94px;z-index:15;display:flex;gap:8px}
 .barra-ed .btn{flex:1;min-width:0;height:52px;padding:0 10px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
 .barra-ed .btn.ghost{background:var(--panel)}
+.dr-tit{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.dr-tit .btn.on{background:var(--gold-soft);border-color:var(--plata)}
+.dp{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px}
+.dp .field{margin-bottom:6px}.dp .field select{width:100%}
+.dp-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.dp-togs{display:flex;gap:8px;margin-left:auto}
 .rep-fila{display:grid;grid-template-columns:auto 62px minmax(0,1fr) 40px;gap:6px;align-items:center;margin-bottom:8px}
 .rep-t{white-space:nowrap}.rep-fila .rep-n{width:100%;min-width:0}
 .rep-l{min-width:0;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:14px;color:var(--fg);font:inherit;font-size:16px;padding:6px 8px;text-overflow:ellipsis}
@@ -3953,20 +3958,20 @@ const ATAJOS = [
 // Si el personaje cambia y la tirada a medida quedó con un Rasgo que el nuevo no tiene (una Disciplina, por ejemplo), vale 0 en vez de romper la pantalla.
 const rasgoJ = k => { try { return rasgo(k); } catch(_){ return 0; } };
 const UNICOS = ["conciencia","autocontrol","coraje","humanidad","fuerza_de_voluntad"];
-function reservaJ(){
-  if(J.esp === "iniciativa"){ const pen = penalizacion() || 0;
+function reservaJ(S = J){
+  if(S.esp === "iniciativa"){ const pen = penalizacion() || 0;
     return {n:1, titulo:`Iniciativa: 1d10 + Destreza ${rasgo("destreza")} + Astucia ${rasgo("astucia")}${pen ? " "+pen+" por heridas" : ""}`, pen, unico:true}; }
-  if(J.esp === "absorcion"){ const fort = (F.disciplinas||{}).fortaleza || 0, suma = fort && J.sumaDisc !== false;
+  if(S.esp === "absorcion"){ const fort = (F.disciplinas||{}).fortaleza || 0, suma = fort && S.sumaDisc !== false;
     return {n:rasgo("resistencia") + (suma ? fort : 0), titulo:`Absorción: Resistencia ${rasgo("resistencia")}${suma ? " + Fortaleza "+fort : ""}, dif. 6, los 1 no restan`, pen:0, unico:true, disc: fort ? {nombre:"Fortaleza", n:fort} : null}; }
-  const a = J.a, b = J.b;
+  const a = S.a, b = S.b;
   if(!a && !b) return {n:0, titulo:"Elegí al menos un Rasgo", pen:0, unico:false};
   const unico = UNICOS.includes(a) && !b;
   let n = (a ? rasgoJ(a) : 0) + (b ? rasgoJ(b) : 0);
   if(a === "conciencia" || a === "autocontrol" || a === "coraje") n = Math.min(n, F.humanidad);
   if(a === "autocontrol" && !b) n = Math.min(n, F.sangre);
-  const pen = (!unico && J.pen) ? (penalizacion() || 0) : 0;
-  const bono = bonoSi(a, J.sumaDisc);
-  n = Math.max(0, n + bono.dados + pen + (Number(J.mod)||0));
+  const pen = (!unico && S.pen) ? (penalizacion() || 0) : 0;
+  const bono = bonoSi(a, S.sumaDisc);
+  n = Math.max(0, n + bono.dados + pen + (Number(S.mod)||0));
   return {n, titulo:[a && lab(a), b && lab(b)].filter(Boolean).join(" + ") + (bono.txt ? " + " + bono.txt : ""), pen, unico, auto:bono.auto, bono, disc: discDe(a)};
 }
 function selectA(sel = J.a){
@@ -4169,11 +4174,6 @@ function renderJuego(){
   ${armasJuegoHTML()}
 
   <div class="folds">
-    <details class="fold" id="j-medida" ${J.medAbierto?"open":""}><summary><span>Tirada a medida</span></summary><div class="fold-in">
-      <div class="field"><label for="j-a">Atributo o Rasgo</label><select id="j-a">${selectA()}</select></div>
-      <div class="field"><label for="j-b">Habilidad o Disciplina</label><select id="j-b">${selectB()}</select></div>
-      <div class="sh-fila"><span class="pen">Dados extra</span><div class="stepper chico"><button type="button" id="j-modm" aria-label="Un dado menos">−</button><b class="num">${J.mod>0?"+":""}${J.mod}</b><button type="button" id="j-modp" aria-label="Un dado más">+</button></div></div>
-      <label class="chk"><input type="checkbox" id="j-pen" ${J.pen?"checked":""} ${r.unico?"disabled":""}> Restar penalización por heridas${penalizacion() ? ` (${fmtPen(penalizacion())})` : ""}</label></div></details>
     <details class="fold" id="j-reg" ${J.regAbierto?"open":""}><summary><span>Registro de la mesa${reg.length ? ` <span class="pen">· ${reg.length}</span>` : ""}</span></summary><div class="fold-in">${reg.length ? reg.map(x => `<div class="kv"><span>${esc(x.texto)}</span><span>${horaCorta(x.t)}</span></div>`).join("") : '<p class="pen">Todavía no hay acciones registradas.</p>'}</div></details>
   </div>`;
   enlazarJuego(); enlazarTurno();
@@ -4196,12 +4196,6 @@ function enlazarJuego(){
     v("j-fv").onclick = () => { J.fv = !J.fv; v("j-fv").setAttribute("aria-pressed", J.fv); };
     if(v("j-espec")) v("j-espec").onclick = () => { J.espec = !J.espec; v("j-espec").setAttribute("aria-pressed", J.espec); }; }
   v("j-tirar").onclick = tirarRasgos;
-  v("j-a").onchange = e => { soltar(); J.a = e.target.value; if(UNICOS.includes(J.a)) J.b = ""; re(); };
-  v("j-b").onchange = e => { soltar(); J.b = e.target.value; re(); };
-  v("j-modm").onclick = () => { J.mod = Math.max(-10, J.mod-1); soltar(); re(); };
-  v("j-modp").onclick = () => { J.mod = Math.min(10, J.mod+1); soltar(); re(); };
-  v("j-pen").onchange = e => { J.pen = e.target.checked; re(); };
-  v("j-medida").ontoggle = e => J.medAbierto = e.target.open;
   v("j-reg").ontoggle = e => J.regAbierto = e.target.open;
   enlazarArmas();
 }
@@ -4490,7 +4484,22 @@ function abrirNota(id){
    Los 10 se muestran como 0. Un 1 tocado descarta el dado más alto (ambos en gris).
    Un 0 tocado agrega un dado nuevo (borde verde): la regla del 10 que repite.
    ===================================================================== */
-const DR = {n:5, dados:[]};   // dados: [{v, desc:false, par:null, usado:false, extra:false}]
+const DR = {n:5, dados:[]};
+// Tirada personalizada del dado rápido: arma la cantidad de dados con Atributo + Habilidad/Disciplina, dados extra y heridas (mismo cálculo que las tiradas de Juego).
+const DP = {abierto:false, a:"", b:"", mod:0, pen:true, sumaDisc:true};
+function actualizarPers(){
+  const tg = $("#dp-togs"), res = $("#dp-res"); if(!tg || !res) return;
+  const r = reservaJ(DP), pen = penalizacion() || 0;
+  tg.innerHTML = (r.disc ? `<button type="button" class="tog circ" id="dp-disc" aria-pressed="${DP.sumaDisc !== false}" aria-label="${esc(r.disc.nombre)} +${r.disc.n}: sumar a la tirada" title="${esc(r.disc.nombre)} +${r.disc.n}">${SIGLA[r.disc.nombre] || esc(r.disc.nombre)}</button>` : "")
+    + (pen && !r.unico ? `<button type="button" class="tog" id="dp-pen" aria-pressed="${!!DP.pen}" title="Restar la penalización por heridas">Heridas ${fmtPen(pen)}</button>` : "");
+  $("#dp-mod").textContent = (DP.mod > 0 ? "+" : "") + DP.mod;
+  const d = $("#dp-disc"); if(d) d.onclick = () => { DP.sumaDisc = DP.sumaDisc === false; actualizarPers(); };
+  const h = $("#dp-pen"); if(h) h.onclick = () => { DP.pen = !DP.pen; actualizarPers(); };
+  if(!DP.a && !DP.b){ res.textContent = "Elegí un Atributo o una Habilidad para calcular los dados."; return; }
+  const partes = [DP.a && `${lab(DP.a)} ${rasgoJ(DP.a)}`, DP.b && `${lab(DP.b)} ${rasgoJ(DP.b)}`].filter(Boolean).join(" + ");
+  res.textContent = `${partes}${r.bono?.txt ? " + " + r.bono.txt : ""}${r.pen ? ` ${r.pen} por heridas` : ""}${DP.mod ? ` ${DP.mod > 0 ? "+" : ""}${DP.mod} extra` : ""} = ${r.n} dado${r.n === 1 ? "" : "s"}${r.n < 1 ? " (no hay dados para tirar)" : ""}`;
+  DR.n = Math.max(1, Math.min(30, r.n)); const n = $("#dr-n"); if(n) n.textContent = DR.n;
+}   // dados: [{v, desc:false, par:null, usado:false, extra:false}]
 function posFab(){
   const app = $("#app"), fab = $("#fab-dado"); if(!app || !fab) return;
   const comp = $("#composer"), tope = (!comp.hidden ? comp : $("#tabs")).getBoundingClientRect().top;
@@ -4552,7 +4561,12 @@ async function tirarRapido(){
   pintarRapida();
 }
 function abrirDadoRapido(){
-  abrirSheet(`<h2>Tirar dados</h2>
+  abrirSheet(`<div class="dr-tit"><h2 style="margin:0">Tirar dados</h2>${F ? `<button type="button" class="btn ghost" id="dr-pers" style="padding:4px 12px" aria-expanded="${DP.abierto}" aria-controls="dp-caja">Personalizada</button>` : ""}</div>
+    ${F ? `<div id="dp-caja" class="dp" ${DP.abierto ? "" : "hidden"}>
+      <div class="jrow"><div class="field"><label for="dp-a">Atributo o Rasgo</label><select id="dp-a">${selectA(DP.a)}</select></div>
+        <div class="field"><label for="dp-b">Habilidad o Disciplina</label><select id="dp-b">${selectB(DP.b)}</select></div></div>
+      <div class="dp-ctl"><span class="pen">Dados extra</span><div class="stepper chico"><button type="button" id="dp-menos" aria-label="Un dado extra menos">−</button><b class="num" id="dp-mod">0</b><button type="button" id="dp-mas" aria-label="Un dado extra más">+</button></div><span id="dp-togs" class="dp-togs"></span></div>
+      <p class="pen" id="dp-res" style="margin:6px 0 0"></p></div>` : ""}
     <div class="dice-actions"><div class="fb"><button type="button" id="dr-menos" aria-label="Un dado menos">−</button><b id="dr-n" class="num" style="font-size:24px;min-width:34px">${DR.n}</b><button type="button" id="dr-mas" aria-label="Un dado más">+</button><span class="pen">dados</span></div>
       <div class="dr-der"><button type="button" class="drauto uno" id="dr-unos" aria-label="Aplicar todos los 1" title="Aplicar los 1" disabled>1</button><button type="button" class="drauto cero" id="dr-dieces" aria-label="Repetir todos los 10" title="Repetir los 10" disabled>10</button>
       <button class="btn" type="button" id="dr-tirar">Tirar</button></div></div>
@@ -4564,6 +4578,16 @@ function abrirDadoRapido(){
     $("#dr-tirar").onclick = tirarRapido;
     $("#dr-unos").onclick = aplicarUnos; $("#dr-dieces").onclick = aplicarDieces;
     $("#dr-x").onclick = cerrarSheet;
+    const pers = $("#dr-pers");
+    if(pers){
+      const mostrar = () => { $("#dp-caja").hidden = !DP.abierto; pers.setAttribute("aria-expanded", String(DP.abierto)); pers.classList.toggle("on", DP.abierto); if(DP.abierto) actualizarPers(); };
+      pers.onclick = () => { DP.abierto = !DP.abierto; mostrar(); };
+      $("#dp-a").onchange = e => { DP.a = e.target.value; if(UNICOS.includes(DP.a)){ DP.b = ""; $("#dp-b").value = ""; } actualizarPers(); };
+      $("#dp-b").onchange = e => { DP.b = e.target.value; DP.sumaDisc = true; actualizarPers(); };
+      $("#dp-menos").onclick = () => { DP.mod = Math.max(-10, DP.mod - 1); actualizarPers(); };
+      $("#dp-mas").onclick = () => { DP.mod = Math.min(10, DP.mod + 1); actualizarPers(); };
+      mostrar();
+    }
     pintarRapida();
   });
 }
