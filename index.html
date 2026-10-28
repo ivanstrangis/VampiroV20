@@ -304,6 +304,13 @@ details.esp-arma{margin-top:16px}
 .dp{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px}
 .dp .field{margin-bottom:6px}.dp .field select{width:100%}
 .dp-ctl{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.dp-togs{display:flex;gap:8px;margin-left:auto}
+.menu-tit{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px}
+.vela{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);display:grid;place-items:center;padding:0;cursor:pointer}
+.vela svg{width:38px;height:38px;overflow:visible}
+.vela .llama{transform-origin:16px 12.4px;transition:opacity .25s,transform .25s;opacity:0;transform:scale(.4)}
+.vela[aria-checked="true"] .llama{opacity:1;transform:scale(1);filter:drop-shadow(0 0 3px rgba(229,67,47,.75));animation:parpadeo 2.4s ease-in-out infinite}
+@keyframes parpadeo{0%,100%{transform:scale(1,1) skewX(0)}30%{transform:scale(.96,1.07) skewX(-2deg)}60%{transform:scale(1.03,.97) skewX(1.5deg)}}
+@media (prefers-reduced-motion:reduce){.vela[aria-checked="true"] .llama{animation:none}}
 .rep-fila{display:grid;grid-template-columns:auto 62px minmax(0,1fr) 40px;gap:6px;align-items:center;margin-bottom:8px}
 .rep-t{white-space:nowrap}.rep-fila .rep-n{width:100%;min-width:0}
 .rep-l{min-width:0;width:100%;background:var(--bg);border:1px solid var(--line);border-radius:14px;color:var(--fg);font:inherit;font-size:16px;padding:6px 8px;text-overflow:ellipsis}
@@ -1798,12 +1805,17 @@ function deslizarParaCerrar(hoja, fondo){
   hoja.addEventListener("touchend", soltar); hoja.addEventListener("touchcancel", soltar);
 }
 const cerrarSheet = () => { const f = alCerrarSheet; alCerrarSheet = null; $("#sheet-root").innerHTML = ""; if(f) f(); };
+// Vela de la apariencia: encendida (llama rojiza) en el modo oscuro, apagada en el claro.
+const velaHTML = () => { const oscuro = TEMA !== "claro";
+  return `<button type="button" class="vela" id="btn-tema" role="switch" aria-checked="${oscuro}" aria-label="Apariencia: ${oscuro ? "oscura, con la vela encendida. Tocá para pasar a clara" : "clara, con la vela apagada. Tocá para pasar a oscura"}" title="${oscuro ? "Modo oscuro" : "Modo claro"}">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="vl-g" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#a8101c"/><stop offset=".55" stop-color="#e5432f"/><stop offset="1" stop-color="#ffb085"/></linearGradient></defs>
+      <path class="llama" d="M16 3.2c3 3.4 4.1 5.8 1.6 9.2h-3.2C11.9 9 13 6.6 16 3.2Z" fill="url(#vl-g)"/>
+      <path d="M16 12.6v2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+      <path d="M11 16.2c0-.9.7-1.5 1.5-1.5h7c.8 0 1.5.6 1.5 1.5V27h-10Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M13.6 15.2c.5 1.6.5 2.6 1.6 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none" opacity=".6"/>
+      <path d="M8 28.2h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`; };
 $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
-  abrirSheet(`<h2>Menú</h2>
-  <div class="sec-lbl">Apariencia</div>
-  <div class="seg" role="radiogroup" aria-label="Apariencia">
-    <button type="button" role="radio" aria-checked="${TEMA !== "claro"}" data-tema="oscuro"><b>Oscuro</b><small>Negro y plata</small></button>
-    <button type="button" role="radio" aria-checked="${TEMA === "claro"}" data-tema="claro"><b>Claro</b><small>Fondo claro</small></button></div>
+  abrirSheet(`<div class="menu-tit"><h2 style="margin:0">Menú</h2>${velaHTML()}</div>
   ${F && !ajena ? `<div class="sec-lbl" style="margin-top:14px">Partida</div>
   <button class="menu-item" id="mi-partida" type="button"><b>${ia ? "Narrador " + esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)") : "Narrador en mesa"}</b><small>${esc(CRON?.nombre ? CRON.nombre + (CRON.tipo ? " · " + nombreTipo(CRON.tipo) : "") : ia ? "Crónica sin elegir" : "Dados y ficha a mano")} · tocá para cambiar crónica, modo o motor</small></button>` : `
   <button class="menu-item" id="mi-motor" type="button"><b>Motor del Narrador</b><small>${esc(MOTORES[MOTOR.tipo]?.nombre || "Claude (tu cuenta)")}${MOTOR.tipo !== "claude" && MOTOR.modelo ? " · "+esc(MOTOR.modelo) : ""}</small></button>`}
@@ -1823,7 +1835,7 @@ $("#btn-menu").onclick = () => { const ajena = esHojaAjena(), ia = !modoMesa();
   <div class="row"><button class="btn ghost" type="button" id="mi-x">Cerrar</button></div>`, async () => {
     $("#mi-x").onclick = cerrarSheet;
     if($("#mi-motor")) $("#mi-motor").onclick = () => abrirMotor();
-    document.querySelectorAll("[data-tema]").forEach(b => b.onclick = () => { aplicarTema(b.dataset.tema); document.querySelectorAll("[data-tema]").forEach(x => x.setAttribute("aria-checked", x.dataset.tema === b.dataset.tema)); });
+    const vela = $("#btn-tema"); if(vela) vela.onclick = () => { aplicarTema(TEMA === "claro" ? "oscuro" : "claro"); vela.outerHTML = velaHTML(); $("#btn-tema").onclick = vela.onclick; $("#btn-tema").focus(); };
     if($("#mi-partida")) $("#mi-partida").onclick = () => { cerrarSheet(); abrirPartida(); };
     if(ia){ $("#mi-esc").onclick = () => { cerrarSheet(); cerrarEscena(); }; $("#mi-noche").onclick = () => { cerrarSheet(); confirmarNoche(); }; }
     $("#mi-crear").onclick = () => { cerrarSheet(); abrirCreacion(); };

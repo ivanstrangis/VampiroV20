@@ -1189,6 +1189,26 @@ await prueba("dado rápido: «Personalizada» arma los dados con Atributo + Habi
   await page.evaluate(() => { F.salud = []; });
 });
 
+await prueba("apariencia: la vela del menú alterna oscuro y claro", async () => {
+  await abrirMenu();
+  assert.equal(await page.locator("#btn-tema").getAttribute("aria-checked"), "true", "arranca oscuro, vela encendida");
+  const caja = await page.evaluate(() => { const v = document.querySelector("#btn-tema").getBoundingClientRect(), t = document.querySelector(".menu-tit h2").getBoundingClientRect();
+    return {vTop:v.top, vR:v.right, vW:v.width, tMid:(t.top + t.bottom) / 2, vMid:(v.top + v.bottom) / 2, ancho:innerWidth}; });
+  assert.ok(Math.abs(caja.tMid - caja.vMid) < 8, "a la altura del título Menú");
+  assert.ok(caja.vR > caja.ancho - 30 && caja.vW >= 44, "arriba a la derecha y fácil de tocar");
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".vela .llama")).opacity), "1");
+  await foto("vela-oscuro");
+  await page.click("#btn-tema");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
+  assert.equal(await page.locator("#btn-tema").getAttribute("aria-checked"), "false");
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".vela .llama")).opacity), "0", "vela apagada, sin llama");
+  await foto("vela-claro");
+  await page.click("#btn-tema");
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), undefined);
+  await page.evaluate(() => cerrarSheet());
+});
+
 await prueba("sin internet la app abre desde la copia guardada", async () => {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await ctx.setOffline(true);
