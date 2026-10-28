@@ -772,7 +772,13 @@ await prueba("deslizar de lado cambia de pestaña, sin dar la vuelta en las punt
   await lado(-200); assert.equal(await actual(), "notas");
   await lado(-200); assert.equal(await actual(), "notas", "en la última pestaña no da la vuelta");
   await lado(200); assert.equal(await actual(), "inv");
+  { const x0 = 90, y = 400; await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y }] });
+    for (let i = 1; i <= 6; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x0 + 12 * i, y: y + 2 }] }); await page.waitForTimeout(60); }
+    const atras = await page.evaluate(() => { const v = document.querySelector(".screen.vecina"), a = [...document.querySelectorAll(".screen")].find(e => !e.hidden && !e.classList.contains("vecina")); return { vec: v && v.id, x: v && v.getBoundingClientRect().left, act: a && a.id, ax: a && a.style.transform }; });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await page.waitForTimeout(550);
+    assert.equal(atras.vec, "s-ficha"); assert.ok(atras.x < 0, "la hoja anterior entra desde la izquierda"); assert.equal(atras.act, "s-inv"); assert.match(atras.ax, /translateX\(\d+/, "la actual acompaña al dedo"); }
   await lado(200); assert.equal(await actual(), "ficha");
+  // hacia atrás también se ve la hoja vecina, igual que hacia adelante
   await lado(200); assert.equal(await actual(), "chat");
   await lado(200); assert.equal(await actual(), "chat", "en la primera pestaña no da la vuelta");
   // un gesto más vertical que horizontal no cambia de pestaña

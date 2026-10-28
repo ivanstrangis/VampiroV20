@@ -1721,7 +1721,7 @@ function mostrarPestana(t){
   let ini = null, arrastra = false, ocupado = false, dx = 0;
   const scrollLado = el => { for(let n = el; n && !n.classList.contains("screen") && n !== document.body; n = n.parentElement){ const ox = getComputedStyle(n).overflowX; if((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return true; } return false; };
   const tabsYActual = () => { const tabs = [...document.querySelectorAll("#tabs button")]; return {tabs, i:tabs.findIndex(b => b.getAttribute("aria-selected") === "true")}; };
-  const pantalla = () => document.querySelector(".screen:not([hidden])");
+  const pantalla = () => document.querySelector(".screen:not([hidden]):not(.vecina)");
   document.addEventListener("touchstart", e => {
     ini = null; arrastra = false;
     if(ocupado || e.touches.length !== 1 || $("#sheet-root").firstElementChild || $("#tabs").hidden) return;
