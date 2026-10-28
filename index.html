@@ -2066,8 +2066,8 @@ const gastoHab = g => sumaVals(W.hab, HAB[g]);
 const extraVir = () => VIRT.reduce((s,v) => s + W.vir[v] - 1, 0);
 const disClan = () => clanDe(W.clan)?.[2] || [];
 // Las que se pueden comprar con puntos gratuitos aunque no sean del clan (V20 pág. 83: el Narrador puede restringirlas).
-// Quedan afuera las de linaje propio (Dementación, Extinción, Necromancia, Obtenebración, Quimerismo, Serpentis, Taumaturgia, Vicisitud).
-const DISC_COMUNES = ["animalismo","auspex","celeridad","dominacion","fortaleza","ofuscacion","potencia","presencia","protean"];
+// Quedan afuera las de linaje propio (Dementación, Extinción, Necromancia, Obtenebración, Protean, Quimerismo, Serpentis, Taumaturgia, Vicisitud).
+const DISC_COMUNES = ["animalismo","auspex","celeridad","dominacion","fortaleza","ofuscacion","potencia","presencia"];
 const disExtra = () => DISC_COMUNES.filter(d => !disClan().includes(d));
 function totalRasgo(tipo, k){
   const g = W.grat[tipo+":"+(k||"")] || 0;

@@ -983,7 +983,7 @@ await prueba("creador: sin pestañas abajo, y al salir con algo cargado pide con
 await prueba("creador: Disciplinas comunes de otros clanes con puntos gratuitos (7 por círculo)", async () => {
   await page.evaluate(() => { abrirCreacion(); W.nombre = "X Y"; W.clan = "ventrue"; W.step = 7; renderWz(); });
   const extra = await page.evaluate(() => disExtra().join());
-  assert.match(extra, /auspex/); assert.doesNotMatch(extra, /dominacion|fortaleza|presencia|taumaturgia|necromancia/);
+  assert.match(extra, /auspex/); assert.doesNotMatch(extra, /dominacion|fortaleza|presencia|taumaturgia|necromancia|protean/);
   await page.evaluate(() => { document.querySelectorAll("details.cat").forEach(d => d.open = true); });
   const antes = await page.evaluate(() => gastoGrat());
   await page.click('[data-dp="disciplina:auspex"] button[data-v="2"]');
