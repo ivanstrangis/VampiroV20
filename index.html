@@ -198,6 +198,8 @@ textarea.notes{width:100%;min-height:120px;background:var(--panel);border:1px so
 .sheet-bg{position:absolute;inset:0;background:rgba(10,6,12,.6);display:flex;align-items:flex-end;z-index:20}
 .sheet{width:100%;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));max-height:85%;overflow-y:auto;overscroll-behavior:contain}
 .sheet h2{font-family:var(--gothic);font-weight:400;font-size:28px;margin:0 0 10px}
+/* La fila final de botones (Cerrar, Guardar, Cancelar…) queda fija abajo mientras se lee una hoja larga; en las cortas no se nota. */
+.sheet>.row:last-child{position:sticky;bottom:0;z-index:3;margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));margin-top:8px;padding-block:10px calc(16px + env(safe-area-inset-bottom,0px));background:linear-gradient(to bottom,transparent,var(--bg) 14px)}
 .menu-item{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:8px}
 .menu-item b{display:block;font-weight:600}
 .menu-item small{color:var(--muted);font-size:16px}
@@ -1829,6 +1831,7 @@ function abrirSheet(html, setup){
   const bg = root.firstElementChild; bg.addEventListener("click", e => { if(e.target === bg) cerrarSheet(); });
   deslizarParaCerrar(bg.firstElementChild, bg);
   setup && setup(bg);
+  bg.firstElementChild.scrollTop = 0;   // un foco puesto abajo no debe abrir la hoja desplazada al final: se lee desde arriba
 }
 /* Los menús (hojas desde abajo) se cierran arrastrándolos hacia abajo cuando ya están en el tope: si seguís deslizando, acompañan el dedo y se van. */
 function deslizarParaCerrar(hoja, fondo){
@@ -3343,7 +3346,7 @@ function mostrarInfo(k, v){
       return `<li class="${i+1===v?"actual":""}">${dsc ? `<details class="pdet"><summary>${fila}</summary><p>${esc(dsc)}</p></details>` : fila}</li>`; }).join("")}</ol>
       ${niv.some(t => DESC_PODER[String(t).split(":")[0].replace(/\.$/, "").trim()]) ? '<p class="pen">Tocá un poder para ver qué hace.</p>' : ""}` : ""}
     ${SENDAS[k] ? sendasInfoHTML(k) : ""}
-    <div class="row"><button class="btn ghost" type="button" id="info-x">Cerrar</button></div>`, () => { $("#info-x").onclick = cerrarSheet; $("#info-x").focus(); });
+    <div class="row"><button class="btn ghost" type="button" id="info-x">Cerrar</button></div>`, () => { $("#info-x").onclick = cerrarSheet; $("#info-x").focus({preventScroll:true}); });
 }
 const REGLA_SENDAS = {
   taumaturgia:"Se aprenden con experiencia (7 PX la primera vez, después nivel actual × 4) o, al crear el personaje, con puntos gratuitos. Hacen falta al menos 2 niveles en la Senda de la Sangre, y una Senda secundaria queda siempre un punto por debajo de la Sangre hasta que esta llega a 5. El Narrador decide a cuáles tenés acceso.",

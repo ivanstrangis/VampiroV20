@@ -838,6 +838,18 @@ await prueba("Narrador IA: tu mensaje queda arriba y la respuesta crece sin move
   assert.ok(Math.abs(r.arriba1 - r.arriba0) < 2, "la pantalla no se movió mientras llegaba la respuesta");
   await page.evaluate(a => { elegirMotor(); MUNDO.modo = a.modo; MUNDO.cronica_id = a.cron; aplicarModo(); scrollChat(); }, antes);
 });
+await prueba("hojas largas (info de Disciplina): abren desde arriba y «Cerrar» queda fijo abajo", async () => {
+  await page.evaluate(() => { cerrarSheet(); mostrarPestana("ficha"); mostrarInfo("taumaturgia", 2); });
+  await page.waitForSelector("#info-x");
+  const m = () => page.evaluate(() => { const sh = document.querySelector(".sheet"), b = document.querySelector("#info-x").getBoundingClientRect(), r = sh.getBoundingClientRect(); return { top: sh.scrollTop, largo: sh.scrollHeight > sh.clientHeight + 100, dentro: b.bottom <= r.bottom + 1 && b.top >= r.top, hastaAbajo: Math.round(r.bottom - b.bottom) }; });
+  const a = await m();
+  assert.equal(a.top, 0, "abre desde arriba"); assert.ok(a.largo, "la hoja es larga"); assert.ok(a.dentro, "Cerrar se ve sin bajar");
+  await page.evaluate(() => { const sh = document.querySelector(".sheet"); sh.scrollTop = sh.scrollHeight; });
+  const b = await m();
+  assert.ok(b.dentro && b.hastaAbajo < 40, "al final también queda a ras del borde (" + b.hastaAbajo + ")");
+  await foto("hoja-cerrar-fijo");
+  await page.click("#info-x"); assert.equal(await page.$(".sheet"), null);
+});
 await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
   const r = await page.evaluate(() => ["body", "#app", "button", ".screen", "input"].map(q => { const e = document.querySelector(q); return e ? getComputedStyle(e).touchAction : "manipulation"; }));
   assert.deepEqual([...new Set(r)], ["manipulation"]);
