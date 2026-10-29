@@ -818,6 +818,26 @@ await prueba("Claude sin herramientas: las pide por texto, las ejecuta y sigue",
   assert.match(r.vistos[1].ult, /Resultados de las herramientas/);
   assert.equal(r.vio, false, "el jugador no ve las líneas @@herramienta");
 });
+await prueba("Narrador IA: tu mensaje queda arriba y la respuesta crece sin mover la pantalla", async () => {
+  const antes = await page.evaluate(() => ({ modo: MUNDO.modo, cron: MUNDO.cronica_id }));
+  await prepararIA();
+  const r = await page.evaluate(async () => {
+    for (let i = 0; i < 25; i++) nuevoMsg({ rol: "sistema", texto: "Relleno " + i + " para que el chat tenga mucho recorrido" }, false);
+    const s = document.querySelector("#s-chat"), esp = ms => new Promise(ok => setTimeout(ok, ms));
+    SAMPLE = async (input, opts) => { let t = ""; for (let i = 0; i < 14; i++) { t += (i ? String.fromCharCode(10, 10) : "") + "Párrafo " + i + " de la respuesta del Narrador, bastante largo para ocupar varias líneas en el chat del teléfono."; opts.onText({ text: t }); await esp(40); } return { text: t }; };
+    const p = narrar("Miro alrededor con calma");
+    await esp(150);
+    const me = [...document.querySelectorAll("#chat .me")].pop(), sr = s.getBoundingClientRect();
+    const arriba0 = me.getBoundingClientRect().top - sr.top, st0 = s.scrollTop;
+    await p;
+    const arriba1 = me.getBoundingClientRect().top - sr.top;
+    return { arriba0, arriba1, st0, st1: s.scrollTop, crecio: s.scrollHeight > s.clientHeight + 200, texto: document.querySelector("#chat").textContent.includes("Párrafo 13") };
+  });
+  assert.ok(r.texto && r.crecio);
+  assert.ok(r.arriba0 >= 0 && r.arriba0 < 40, "el mensaje queda arriba de todo (" + r.arriba0 + ")");
+  assert.ok(Math.abs(r.arriba1 - r.arriba0) < 2, "la pantalla no se movió mientras llegaba la respuesta");
+  await page.evaluate(a => { elegirMotor(); MUNDO.modo = a.modo; MUNDO.cronica_id = a.cron; aplicarModo(); scrollChat(); }, antes);
+});
 await prueba("el doble toque no hace zoom (touch-action: manipulation en todo)", async () => {
   const r = await page.evaluate(() => ["body", "#app", "button", ".screen", "input"].map(q => { const e = document.querySelector(q); return e ? getComputedStyle(e).touchAction : "manipulation"; }));
   assert.deepEqual([...new Set(r)], ["manipulation"]);

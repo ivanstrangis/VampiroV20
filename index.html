@@ -1123,7 +1123,26 @@ function reservaTirada(p){
    Mensajes de la partida
    ===================================================================== */
 const chat = $("#chat");
-function scrollChat(){ const s = $("#s-chat"); s.scrollTop = s.scrollHeight; }
+/* Mientras el Narrador responde, el chat no baja solo: tu mensaje queda arriba y la respuesta crece hacia abajo, para leerla a tu ritmo.
+   Un relleno debajo (padding del chat) deja que el mensaje pueda quedar arriba aunque la respuesta todavía sea corta. */
+let anclaEl = null;
+function ajustarRelleno(){
+  const s = $("#s-chat"); if(!anclaEl || !anclaEl.isConnected || s.hidden){ chat.style.paddingBottom = ""; return; }
+  const sr = s.getBoundingClientRect(), pad = parseFloat(chat.style.paddingBottom) || 0;
+  const arriba = anclaEl.getBoundingClientRect().top - sr.top + s.scrollTop;
+  const fin = chat.getBoundingClientRect().top - sr.top + s.scrollTop + chat.scrollHeight - pad;
+  chat.style.paddingBottom = Math.max(0, Math.ceil(s.clientHeight - (fin - arriba))) + "px";
+}
+function anclarChat(el){
+  const s = $("#s-chat"); anclaEl = el; if(!el || s.hidden) return;
+  ajustarRelleno();
+  s.scrollTop = el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop - 4;
+}
+function scrollChat(){
+  const s = $("#s-chat");
+  if(running && anclaEl){ ajustarRelleno(); return; }
+  anclaEl = null; chat.style.paddingBottom = ""; s.scrollTop = s.scrollHeight;
+}
 function guardarMsg(m){ escribir(R.msgs()+"/m"+m.n, m); }
 function nuevoMsg(m, guardar=true){
   m.n = nextN(); MSGS.push(m);
@@ -1456,17 +1475,18 @@ function textoLimite(e){
 async function narrar(texto, {oculto=false, reusar=false}={}){
   if(running) return;
   if(!SAMPLE){ sysMsg("No hay un motor del Narrador configurado. Elegilo en Menú → Motor del Narrador.", "err", false); return; }
+  let suyo = null;
   if(!reusar){
     if(oculto){ const m = {rol:"jugador", texto, oculto:true, n:nextN()}; MSGS.push(m); guardarMsg(m); }
-    else nuevoMsg({rol:"jugador", texto});
-  }
+    else suyo = nuevoMsg({rol:"jugador", texto}).el;
+  } else suyo = [...chat.querySelectorAll(".me")].pop() || null;
   const input = turnos();
 
   MUNDO.opciones = []; renderChips();
   running = new AbortController();
   setBusy(true);
   const pensando = document.createElement("div"); pensando.className = "thinking"; pensando.textContent = "El Narrador piensa…";
-  chat.appendChild(pensando); scrollChat();
+  chat.appendChild(pensando); anclarChat(suyo || pensando);
 
   // turno: segmentos de texto intercalados con tarjetas
   let full = "", cortado = 0, bubble = null, segs = [];
