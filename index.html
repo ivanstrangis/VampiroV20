@@ -1126,7 +1126,8 @@ const chat = $("#chat");
 /* Mientras el Narrador responde, el chat no baja solo: tu mensaje queda arriba y la respuesta crece hacia abajo, para leerla a tu ritmo.
    Un relleno debajo (padding del chat) deja que el mensaje pueda quedar arriba aunque la respuesta todavía sea corta. */
 let anclaEl = null;
-function ajustarRelleno(){
+function ajustarRelleno(){ try { ajustarRellenoSeguro(); } catch(_){ chat.style.paddingBottom = ""; anclaEl = null; } }   // el scroll nunca debe cortar un turno
+function ajustarRellenoSeguro(){
   const s = $("#s-chat"); if(!anclaEl || !anclaEl.isConnected || s.hidden){ chat.style.paddingBottom = ""; return; }
   const sr = s.getBoundingClientRect(), pad = parseFloat(chat.style.paddingBottom) || 0;
   const arriba = anclaEl.getBoundingClientRect().top - sr.top + s.scrollTop;
@@ -1510,7 +1511,7 @@ async function narrar(texto, {oculto=false, reusar=false}={}){
     const msg = {auth:"El motor rechazó la clave. Revisala en Menú → Motor del Narrador.", red:"No se pudo conectar con el motor del Narrador. Revisá tu conexión o el motor elegido.", json:"El modelo no respondió en el formato esperado.", not_granted:"Para jugar, permití que la página use Claude (lo pide la primera vez).", rate_limited:textoLimite(e),
       session_expired:"Tu sesión de Claude venció. Volvé a iniciar sesión.", cancelled:"Narración detenida.", refused:"El Narrador no pudo responder a eso. Probá describir la acción de otra forma.",
       prompt_too_large:"La partida es demasiado larga para enviarla entera. Avisale al Director para resumir.", tools_unavailable:"Esta vista no permite herramientas: el motor de reglas no puede actuar."}[e.code]
-      || "Se cortó la conexión con el Narrador. Tocá «Reintentar».";
+      || "Se cortó la conexión con el Narrador (" + String(e?.code || e?.message || "error").slice(0, 80) + "). Tocá «Reintentar».";
     if(!(e.code === "cancelled" && running?.silencioso)) sysMsg(msg, e.code === "cancelled" ? "" : "err", false);
     if(e.code !== "cancelled" && e.code !== "not_granted") MUNDO.opciones = ["Reintentar"];
   } finally {
