@@ -199,7 +199,7 @@ textarea.notes{width:100%;min-height:120px;background:var(--panel);border:1px so
 .sheet{width:100%;background:var(--panel);border-top:1px solid var(--line);border-radius:16px 16px 0 0;padding-block:16px calc(16px + env(safe-area-inset-bottom,0px));max-height:85%;overflow-y:auto;overscroll-behavior:contain}
 .sheet h2{font-family:var(--gothic);font-weight:400;font-size:28px;margin:0 0 10px}
 /* La fila final de botones (Cerrar, Guardar, Cancelar…) queda fija abajo mientras se lee una hoja larga; en las cortas no se nota. */
-.sheet>.row:last-child{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));z-index:3;margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));margin-top:8px;padding-block:6px calc(14px + env(safe-area-inset-bottom,0px));pointer-events:none}
+.sheet>.row:last-child{position:sticky;bottom:calc(-16px - env(safe-area-inset-bottom,0px));z-index:3;margin-bottom:calc(-16px - env(safe-area-inset-bottom,0px));margin-top:8px;padding-block:6px 10px;pointer-events:none}
 .sheet>.row:last-child .btn{pointer-events:auto;box-shadow:0 4px 16px rgba(0,0,0,.35)}
 .sheet>.row:last-child .btn.ghost,.sheet>.row:last-child .btn.danger{background:var(--panel-2)}
 .menu-item{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin-bottom:8px}
