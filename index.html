@@ -496,7 +496,7 @@ body{font-size:17px}
 .scene{padding:0 4px}
 /* barra de pestañas flotante */
 :root{padding-bottom:0}
-.tabs{margin:0 16px max(10px,calc(env(safe-area-inset-bottom,0px) - 12px));border-top:0;background:var(--panel);border-radius:28px;padding:6px;gap:4px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
+.tabs{margin:0 16px 10px;border-top:0;background:var(--panel);border-radius:28px;padding:6px;gap:4px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
 .tabs button{border-radius:22px;padding:7px 0 6px;font-size:15px}
 .tabs button[aria-selected="true"]{font-weight:600}
 .tabs button[aria-selected="true"] svg{color:var(--fg)}
@@ -4585,6 +4585,9 @@ function posFab(){
   const b = Math.max(12, app.getBoundingClientRect().bottom - tope + 12) + "px";
   fab.style.bottom = b; const u = $("#undo"); if(u) u.style.bottom = b; const be = $(".barra-ed"); if(be) be.style.bottom = b;
 }
+// La app nunca se desplaza sola: al cerrar el teclado iOS puede dejar la página corrida unos píxeles.
+{ const aCero = () => { if(window.scrollY && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) window.scrollTo(0, 0); };
+  addEventListener("scroll", aCero, {passive:true}); addEventListener("focusout", () => setTimeout(aCero, 120)); window.visualViewport?.addEventListener("resize", () => setTimeout(aCero, 60)); }
 function caraRapida(d, i){
   const cls = d.desc ? "gris" : d.v === 1 ? "uno" : (d.v === 10 && !d.usado) ? "cero" : "";
   return `<span class="drw ${d.desc ? "anulado" : d.extra ? "extra" : ""}"><button type="button" class="d10 dr ${cls}" data-dr="${i}" aria-label="Dado ${d.v}${d.extra ? ", extra" : ""}${d.desc ? ", descartado" : ""}">${d.v}</button></span>`;
