@@ -495,7 +495,8 @@ body{font-size:17px}
 #n-salud{color:var(--muted);text-align:right}
 .scene{padding:0 4px}
 /* barra de pestañas flotante */
-.tabs{margin:0 16px 12px;border-top:0;background:var(--panel);border-radius:28px;padding:6px;gap:4px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
+:root{padding-bottom:0}
+.tabs{margin:0 16px max(10px,calc(env(safe-area-inset-bottom,0px) - 12px));border-top:0;background:var(--panel);border-radius:28px;padding:6px;gap:4px;box-shadow:0 8px 28px rgba(0,0,0,.28)}
 .tabs button{border-radius:22px;padding:7px 0 6px;font-size:15px}
 .tabs button[aria-selected="true"]{font-weight:600}
 .tabs button[aria-selected="true"] svg{color:var(--fg)}
